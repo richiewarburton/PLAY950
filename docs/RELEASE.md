@@ -37,11 +37,12 @@ code seal. It creates a ZIP and SHA-256 file under `dist/`.
 
 ## Developer ID signing and notarization
 
-The local build is ad-hoc signed and suitable for development testing only. A
-public release needs full Xcode, an Apple Developer account, a `Developer ID
-Application` certificate and notarization credentials.
+The public 0.13.0 GitHub community build is ad-hoc signed and not notarized. A
+future Developer ID distribution needs full Xcode, an Apple Developer account,
+a `Developer ID Application` certificate and notarization credentials.
 
-For the final candidate, sign the nested helper first and the VST3 bundle last:
+For a future Developer ID candidate, sign the nested helper first and the VST3
+bundle last:
 
 ```sh
 codesign --force --options runtime --timestamp \
