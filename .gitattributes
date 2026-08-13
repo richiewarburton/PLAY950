@@ -1,0 +1,2 @@
+# Preserve the official AKAI Util 4.6.7 source archive's CRLF line endings.
+external/akaiutil/** -text whitespace=-trailing-space,-space-before-tab

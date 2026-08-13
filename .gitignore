@@ -1,0 +1,20 @@
+.DS_Store
+/build/
+/build-cli/
+/build-release/
+/Build/
+/cmake-build-*/
+/dist/
+
+# Local identity explorations; approved production assets live in Resources/.
+/Brand Experiments/
+
+# Private hardware/native-format fixtures. Tests must use disposable copies.
+/test-media/private/
+/local-fixtures/
+
+# Local planning prompts retained outside the public source set.
+/S950-VSTi req.md
+/S950-macOS-VST3-Future-Project-Prompt.md
+/docs/AKAI-IMAGE-MANAGER-REMOVE-ROSETTA-PROMPT.md
+/docs/EDIT950-REMOVE-ROSETTA-PROMPT.md
