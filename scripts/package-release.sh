@@ -102,8 +102,10 @@ cp docs/INSTALL.md "$PLAY950_STAGE/$PLAY950_NAME/README.txt"
 cp -R external/akaiutil "$PLAY950_STAGE/$PLAY950_NAME/AKAI-Util-Source"
 ditto -c -k --norsrc --keepParent "$PLAY950_STAGE/$PLAY950_NAME" \
     "$PLAY950_OUTPUT/$PLAY950_NAME.zip"
-shasum -a 256 "$PLAY950_OUTPUT/$PLAY950_NAME.zip" > \
-    "$PLAY950_OUTPUT/$PLAY950_NAME.zip.sha256"
+(
+    cd "$PLAY950_OUTPUT"
+    shasum -a 256 "$PLAY950_NAME.zip" > "$PLAY950_NAME.zip.sha256"
+)
 
 echo "Created $PLAY950_OUTPUT/$PLAY950_NAME.zip"
 echo "Created $PLAY950_OUTPUT/$PLAY950_NAME.zip.sha256"
