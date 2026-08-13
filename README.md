@@ -48,10 +48,12 @@ content with the DAW project.*
 
 ## Current availability
 
-PLAY950 is currently a working **0.13.0 development project**, not yet a
-packaged public plug-in release. It must be built from source on macOS 14 or
-later. The current acceptance work uses Ableton Live 12, although PLAY950 is a
-VST3 and is designed around standard VST3 hosting.
+PLAY950 **0.13.0** is available as a
+[public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest)
+for Apple Silicon and Intel. It requires macOS 14 or later. The release has been
+validated with Ableton Live 12, although PLAY950 is designed around standard
+VST3 hosting. The community build is ad-hoc signed rather than Apple-notarized,
+so macOS may require manual approval when the host first scans it.
 
 PLAY950 models the supported S950 playback, filter and envelope behaviour. It is
 not presented as a circuit-level or component-perfect hardware emulation.
@@ -122,9 +124,18 @@ voices are also fed to their Left/Right group and the All mix.
 - Private hardware/native-format fixtures are deliberately excluded from this
   public repository.
 
-## Build and install the development plug-in
+## Install or build PLAY950
 
-Install Xcode, then clone with the pinned Steinberg VST3 SDK submodules:
+Download the latest public ZIP and SHA-256 sidecar from
+[GitHub Releases](https://github.com/richiewarburton/PLAY950/releases/latest).
+Unzip it, quit the DAW, and copy `PLAY950.vst3` to:
+
+```text
+~/Library/Audio/Plug-Ins/VST3/
+```
+
+Restart or rescan plug-ins in the DAW. Developers can instead build the current
+source with Xcode and the pinned Steinberg VST3 SDK submodule:
 
 ```sh
 git clone --recurse-submodules https://github.com/richiewarburton/PLAY950.git
@@ -135,15 +146,9 @@ cmake -S . -B build -G Xcode \
 cmake --build build --config Release --target PLAY950
 ```
 
-Copy the resulting `PLAY950.vst3` to:
-
-```text
-~/Library/Audio/Plug-Ins/VST3/
-```
-
-Then restart or rescan plug-ins in the DAW. See [INSTALL.md](docs/INSTALL.md) and
-[RELEASE.md](docs/RELEASE.md) for the current development-build, validation and
-packaging details.
+Copy the resulting `PLAY950.vst3` to the same VST3 folder. See
+[INSTALL.md](docs/INSTALL.md) and [RELEASE.md](docs/RELEASE.md) for installation,
+validation and packaging details.
 
 Run the public tests with:
 

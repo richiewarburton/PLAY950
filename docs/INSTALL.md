@@ -2,6 +2,10 @@
 
 PLAY950 requires macOS 14 or later and a VST3 host such as Ableton Live 12.
 
+Download the public Universal macOS package from the
+[PLAY950 GitHub Releases page](https://github.com/richiewarburton/PLAY950/releases/latest).
+The community build is ad-hoc signed and is not Apple-notarized.
+
 1. Quit Ableton Live.
 2. Copy `PLAY950.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
 3. Reopen Live and rescan VST3 plug-ins if PLAY950 does not appear immediately.
