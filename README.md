@@ -31,10 +31,11 @@ This is for musicians who:
 You do **not** need the original hardware. If your preservation workflow
 produced a compatible `.img`, PLAY950 can load from that image read-only.
 
-The floppy constraint can be the point rather than an inconvenience. Build a
-small working IMG in EDIT950, decide what deserves the available
-memory, and let that fixed disk become the sound palette for a track or live
-set. PLAY950 brings the result into the DAW while preserving those choices.
+The floppy constraint can be the point rather than an inconvenience.
+
+EDIT950 gives you everything you need to import samples and build programs.
+
+FIND950 helps you organise your IMGs, tag, sort, send to EDIT / PLAY.
 
 ![PLAY950 loaded with a native S950 program](docs/images/play950-plugin.png)
 
