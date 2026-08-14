@@ -99,6 +99,11 @@ mkdir -p "$PLAY950_OUTPUT"
 mkdir -p "$PLAY950_STAGE/$PLAY950_NAME"
 ditto "$PLAY950_BUNDLE" "$PLAY950_STAGE/$PLAY950_NAME/PLAY950.vst3"
 cp docs/INSTALL.md "$PLAY950_STAGE/$PLAY950_NAME/README.txt"
+mkdir -p "$PLAY950_STAGE/$PLAY950_NAME/Documentation/images"
+cp docs/USER_GUIDE.md \
+    "$PLAY950_STAGE/$PLAY950_NAME/Documentation/USER_GUIDE.md"
+ditto docs/images/user-guide \
+    "$PLAY950_STAGE/$PLAY950_NAME/Documentation/images/user-guide"
 cp -R external/akaiutil "$PLAY950_STAGE/$PLAY950_NAME/AKAI-Util-Source"
 ditto -c -k --norsrc --keepParent "$PLAY950_STAGE/$PLAY950_NAME" \
     "$PLAY950_OUTPUT/$PLAY950_NAME.zip"

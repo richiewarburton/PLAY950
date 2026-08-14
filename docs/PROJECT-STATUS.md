@@ -1,9 +1,9 @@
 # PLAY950 project status
 
-Last updated: 13 August 2026
+Last updated: 14 August 2026
 
-PLAY950 0.13.0 is available as a public Universal macOS VST3 community build on
-[GitHub Releases](https://github.com/richiewarburton/PLAY950/releases/tag/v0.13.0).
+PLAY950 0.13.1 is available as a public Universal macOS VST3 community build on
+[GitHub Releases](https://github.com/richiewarburton/PLAY950/releases/tag/v0.13.1).
 The published build is ad-hoc signed and is not Apple-notarized.
 
 ## Working now
@@ -46,5 +46,5 @@ Live smoke tests on Apple silicon.
   and Intel Macs.
 
 These are hardening steps for a future notarized distribution, not blockers to
-the existing public 0.13.0 community release. The release process is documented
+the existing public 0.13.1 community release. The release process is documented
 in [RELEASE.md](RELEASE.md).

@@ -48,7 +48,7 @@ content with the DAW project.*
 
 ## Current availability
 
-PLAY950 **0.13.0** is available as a
+PLAY950 **0.13.1** is available as a
 [public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest)
 for Apple Silicon and Intel. It requires macOS 14 or later. The release has been
 validated with Ableton Live 12, although PLAY950 is designed around standard
@@ -59,6 +59,9 @@ PLAY950 models the supported S950 playback, filter and envelope behaviour. It is
 not presented as a circuit-level or component-perfect hardware emulation.
 
 ## How to use PLAY950
+
+For a fuller walkthrough with screenshots, installation help, routing advice
+and troubleshooting, see the [PLAY950 musician's guide](docs/USER_GUIDE.md).
 
 1. Install `PLAY950.vst3`, rescan plug-ins if necessary, and add PLAY950 to a
    MIDI/instrument track in the DAW.
