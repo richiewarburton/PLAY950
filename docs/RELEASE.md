@@ -2,7 +2,7 @@
 
 ## Supported package
 
-PLAY950 0.13.1 targets macOS 14 or later and Ableton Live 12. The VST3 binary is
+PLAY950 0.13.2 targets macOS 14 or later and Ableton Live 12. The VST3 binary is
 Universal (`arm64` and `x86_64`). IMG extraction uses the bundled Universal AKAI
 Util 4.6.7 helper and does not require Rosetta. Direct P9 loading does not invoke
 AKAI Util.
@@ -37,7 +37,7 @@ code seal. It creates a ZIP and SHA-256 file under `dist/`.
 
 ## Developer ID signing and notarization
 
-The public 0.13.1 GitHub community build is ad-hoc signed and not notarized. A
+The public 0.13.2 GitHub community build is ad-hoc signed and not notarized. A
 future Developer ID distribution needs full Xcode, an Apple Developer account,
 a `Developer ID Application` certificate and notarization credentials.
 
@@ -70,7 +70,7 @@ Test the exact ZIP on a Mac that has never used the development tree:
 1. Run native Apple Silicon Live without Rosetta.
 2. Copy `PLAY950.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
 3. Reboot or force Live to rescan VST3 plug-ins.
-4. Confirm version 0.13.1, confirm that the host exposes no audio input bus, and
+4. Confirm version 0.13.2, confirm that the host exposes no audio input bus, and
    load a P9 with linked S9 files.
 5. Load a multi-program IMG and verify selection, Reload IMG and recent images.
 6. Save a Set, remove the source, and verify embedded recall.

@@ -6,7 +6,7 @@
 
 <p align="center"><strong>LOAD · PLAY · RECALL</strong></p>
 
-[![MIT License](https://img.shields.io/badge/license-MIT-f3c900.svg)](LICENSE)
+[![PolyForm Internal Use](https://img.shields.io/badge/license-PolyForm%20Internal%20Use-f3c900.svg)](LICENSING.md)
 
 ## Play the programs inside your old S900/S950 disk images in a DAW
 
@@ -48,7 +48,7 @@ content with the DAW project.*
 
 ## Current availability
 
-PLAY950 **0.13.1** is available as a
+PLAY950 **0.13.2** is available as a
 [public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest)
 for Apple Silicon and Intel. It requires macOS 14 or later. The release has been
 validated with Ableton Live 12, although PLAY950 is designed around standard
@@ -204,7 +204,13 @@ submodule under its own licence.
 
 ## Licence
 
-PLAY950's original source is available under the [MIT License](LICENSE). This is
-an independent project and is not affiliated with or endorsed by Akai
-Professional. Third-party SDKs, tools, trademarks and test media retain their
-respective rights.
+Current original PLAY950 material is source-available under the
+[PolyForm Internal Use License 1.0.0](LICENSE), with
+[additional permission](LICENSING.md) for personal, educational and internal
+professional use—including paid music work. Distributing, bundling, hosting or
+selling PLAY950 requires a separate written agreement from Richie Warburton.
+Historical MIT versions retain their earlier terms.
+
+This is an independent project and is not affiliated with or endorsed by Akai
+Professional. AKAI Util, the Steinberg VST3 SDK, third-party tools, trademarks
+and test media retain their respective rights.
