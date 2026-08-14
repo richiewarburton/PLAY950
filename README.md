@@ -12,13 +12,8 @@
 
 It's the icing on the cake.
 
-Your `.img` backups contain more than audio. They contain the P9 programs that
-mapped samples across the keyboard, tuned them, looped them, switched velocity
-layers and routed them to the sampler outputs and MIDI channels. 
-Exporting everything as WAV loses that musical structure.
-
-PLAY950 is a macOS VST3 instrument that loads the native program and its linked
-S9 samples so the recovered sound can be played from MIDI tracks. When the DAW
+PLAY950 is a macOS VST3 instrument that loads S950 format IMG. 
+Native S950 programs can be played from MIDI tracks. When the DAW
 project is saved, PLAY950 embeds the required native content in its plug-in
 state. Reopening the project does not depend on the original IMG still being
 mounted or living at the same path.
