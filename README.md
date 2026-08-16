@@ -10,10 +10,13 @@
 
 ## Play the programs inside your old S900/S950 disk images in a DAW
 
-It's the icing on the cake.
+Your `.img` backups contain more than audio. They contain the P9 programs that
+mapped samples across the keyboard, tuned them, looped them, switched velocity
+layers and routed them to the sampler outputs. Exporting everything as WAV loses
+that musical structure.
 
-PLAY950 is a macOS VST3 instrument that loads S950 format IMG. 
-Native S950 programs can be played from MIDI tracks. When the DAW
+PLAY950 is a macOS VST3 instrument that loads the native program and its linked
+S9 samples so the recovered sound can be played from a MIDI track. When the DAW
 project is saved, PLAY950 embeds the required native content in its plug-in
 state. Reopening the project does not depend on the original IMG still being
 mounted or living at the same path.
@@ -31,11 +34,10 @@ This is for musicians who:
 You do **not** need the original hardware. If your preservation workflow
 produced a compatible `.img`, PLAY950 can load from that image read-only.
 
-The floppy constraint can be the point rather than an inconvenience.
-
-EDIT950 gives you everything you need to import samples and build programs.
-
-FIND950 helps you organise your IMGs, tag, sort, send to EDIT / PLAY.
+The floppy constraint can be the point rather than an inconvenience. Build a
+small working IMG in EDIT950, decide what deserves the available
+memory, and let that fixed disk become the sound palette for a track or live
+set. PLAY950 brings the result into the DAW while preserving those choices.
 
 ![PLAY950 loaded with a native S950 program](docs/images/play950-plugin.png)
 
@@ -44,12 +46,12 @@ content with the DAW project.*
 
 ## Current availability
 
-PLAY950 **0.13.2** is available as a
-[public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest)
-for Apple Silicon and Intel. It requires macOS 14 or later. The release has been
-validated with Ableton Live 12, although PLAY950 is designed around standard
-VST3 hosting. The community build is ad-hoc signed rather than Apple-notarized,
-so macOS may require manual approval when the host first scans it.
+PLAY950 **0.13.2** remains the latest
+[public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest).
+The current source is the working **0.13.3 development version** and must be
+built from source on macOS 14 or later. The current acceptance work uses
+Ableton Live 12, although PLAY950 is a VST3 and is designed around standard
+VST3 hosting.
 
 PLAY950 models the supported S950 playback, filter and envelope behaviour. It is
 not presented as a circuit-level or component-perfect hardware emulation.
@@ -123,18 +125,15 @@ voices are also fed to their Left/Right group and the All mix.
 - Private hardware/native-format fixtures are deliberately excluded from this
   public repository.
 
-## Install or build PLAY950
+AKAI Util 4.6.7 is included with PLAY950. No separate download, EDIT950
+installation, path selection, `chmod` command or other Terminal setup is
+required. PLAY950 launches the included Universal helper locally and read-only
+only when loading an IMG. Direct P9/S9 parsing, playback and saved-project recall
+are native and do not use AKAI Util.
 
-Download the latest public ZIP and SHA-256 sidecar from
-[GitHub Releases](https://github.com/richiewarburton/PLAY950/releases/latest).
-Unzip it, quit the DAW, and copy `PLAY950.vst3` to:
+## Build and install the development plug-in
 
-```text
-~/Library/Audio/Plug-Ins/VST3/
-```
-
-Restart or rescan plug-ins in the DAW. Developers can instead build the current
-source with Xcode and the pinned Steinberg VST3 SDK submodule:
+Install Xcode, then clone with the pinned Steinberg VST3 SDK submodules:
 
 ```sh
 git clone --recurse-submodules https://github.com/richiewarburton/PLAY950.git
@@ -145,9 +144,15 @@ cmake -S . -B build -G Xcode \
 cmake --build build --config Release --target PLAY950
 ```
 
-Copy the resulting `PLAY950.vst3` to the same VST3 folder. See
-[INSTALL.md](docs/INSTALL.md) and [RELEASE.md](docs/RELEASE.md) for installation,
-validation and packaging details.
+Copy the resulting `PLAY950.vst3` to:
+
+```text
+~/Library/Audio/Plug-Ins/VST3/
+```
+
+Then restart or rescan plug-ins in the DAW. See [INSTALL.md](docs/INSTALL.md) and
+[RELEASE.md](docs/RELEASE.md) for the current development-build, validation and
+packaging details.
 
 Run the public tests with:
 

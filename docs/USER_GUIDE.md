@@ -34,8 +34,8 @@ to approve it the first time it is scanned.
 
 AKAI Util 4.6.7 is included inside PLAY950. No separate download, EDIT950
 installation, path selection, `chmod` command or other Terminal setup is
-required. PLAY950 uses it read-only only when loading an IMG; loose P9 loading,
-playback and saved-project recall are native.
+required. PLAY950 uses it read-only only when loading an IMG; direct P9/S9
+loading, playback and saved-project recall are native.
 
 ## Start with an empty player
 
@@ -182,6 +182,13 @@ PLAY950 does not:
 
 It is meant to recover the musical behaviour of the programs, not to turn the
 DAW into a sampler repair bench.
+
+## Check for updates
+
+PLAY950 checks the latest GitHub release whenever its editor opens. If a newer
+version exists, a compact update button appears in the System panel and opens
+the GitHub release page. There is no automatic download or installation. Quit
+the DAW before replacing `PLAY950.vst3`, then rescan or reopen the host.
 
 ## Quick fixes
 

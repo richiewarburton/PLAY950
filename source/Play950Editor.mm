@@ -244,6 +244,40 @@ bool isImage(const std::filesystem::path& path) {
     return extension == ".img";
 }
 
+std::vector<NSInteger> releaseVersionComponents(NSString* value) {
+    NSString* trimmed = [value stringByTrimmingCharactersInSet:
+        NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([[trimmed lowercaseString] hasPrefix:@"v"])
+        trimmed = [trimmed substringFromIndex:1];
+    trimmed = [trimmed componentsSeparatedByCharactersInSet:
+        [NSCharacterSet characterSetWithCharactersInString:@"-+"]].firstObject;
+
+    std::vector<NSInteger> result;
+    for (NSString* component in [trimmed componentsSeparatedByString:@"."]) {
+        NSScanner* scanner = [NSScanner scannerWithString:component];
+        NSInteger number = 0;
+        if (![scanner scanInteger:&number] || !scanner.isAtEnd)
+            return {};
+        result.push_back(number);
+    }
+    return result;
+}
+
+bool isReleaseVersionNewer(NSString* remote, NSString* local) {
+    const auto remoteParts = releaseVersionComponents(remote);
+    const auto localParts = releaseVersionComponents(local);
+    if (remoteParts.empty() || localParts.empty())
+        return false;
+    const auto count = std::max(remoteParts.size(), localParts.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto remotePart = index < remoteParts.size() ? remoteParts[index] : 0;
+        const auto localPart = index < localParts.size() ? localParts[index] : 0;
+        if (remotePart != localPart)
+            return remotePart > localPart;
+    }
+    return false;
+}
+
 std::vector<std::string> stringVector(NSArray<NSString*>* values) {
     std::vector<std::string> result;
     result.reserve(values.count);
@@ -384,6 +418,7 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
 - (void)reloadProgramMenu;
 - (void)reloadRecentMenu;
 - (void)updateToolButtonLabels;
+- (void)checkForUpdates;
 - (void)loadPath:(std::string)selectedPath reload:(BOOL)isReload;
 - (void)loadPath:(std::string)selectedPath reload:(BOOL)isReload preferredProgram:(NSString*)preferredProgram;
 @end
@@ -396,6 +431,8 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     PLAY950Button* _reloadButton;
     PLAY950Button* _editorButton;
     PLAY950Button* _find950Button;
+    PLAY950Button* _updateButton;
+    NSURL* _availableReleaseURL;
     NSPopUpButton* _recentMenu;
     NSPopUpButton* _programMenu;
     NSPopUpButton* _midiReceiveMenu;
@@ -531,7 +568,16 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     [self addSubview:play950Panel(NSMakeRect(30, 91, 326, 1), rule, nil, 0.0)];
     [self addSubview:play950TrackedLabel(
         [NSString stringWithFormat:@"PLAY950 %s · MACOS VST3 · STEREO", PLAY950_VERSION],
-        NSMakeRect(30, 63, 326, 14), 8.5, NSFontWeightRegular, 1.0, unit)];
+        NSMakeRect(30, 63, 178, 14), 8.5, NSFontWeightRegular, 1.0, unit)];
+    _updateButton = [[PLAY950Button alloc] initWithFrame:NSMakeRect(216, 55, 140, 30)];
+    _updateButton.target = self;
+    _updateButton.action = @selector(openAvailableRelease:);
+    _updateButton.title = @"UPDATE AVAILABLE ↗";
+    _updateButton.font = play950Font(8.5, NSFontWeightMedium);
+    _updateButton.hidden = YES;
+    _updateButton.accessibilityLabel = @"Open the latest PLAY950 release on GitHub";
+    stylePlay950Button(_updateButton, slab2, ink, rule2, blue);
+    [self addSubview:_updateButton];
 
     // 950TOOLS group with the approved FIND950 and EDIT950 identities.
     addPlay950GroupHeading(self, @"950TOOLS", NSMakeRect(380, 231, 362, 15), ink, yellow);
@@ -617,7 +663,65 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
             @"%@ Source path unavailable; open the IMG once and resave the Set.",
             _status.stringValue];
     }
+    [self checkForUpdates];
     return self;
+}
+
+- (void)checkForUpdates {
+    NSURL* endpoint = [NSURL URLWithString:
+        @"https://api.github.com/repos/richiewarburton/PLAY950/releases/latest"];
+    NSMutableURLRequest* request = [NSMutableURLRequest requestWithURL:endpoint];
+    request.timeoutInterval = 12.0;
+    request.cachePolicy = NSURLRequestReloadRevalidatingCacheData;
+    [request setValue:@"application/vnd.github+json" forHTTPHeaderField:@"Accept"];
+    [request setValue:@"2022-11-28" forHTTPHeaderField:@"X-GitHub-Api-Version"];
+    [request setValue:[NSString stringWithFormat:@"PLAY950/%s 950TOOLS", PLAY950_VERSION]
+        forHTTPHeaderField:@"User-Agent"];
+
+    __weak PLAY950ContentView* weakSelf = self;
+    NSURLSessionDataTask* task = [NSURLSession.sharedSession
+        dataTaskWithRequest:request
+        completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
+            if (error || !data)
+                return;
+            NSHTTPURLResponse* httpResponse = (NSHTTPURLResponse*)response;
+            if (![httpResponse isKindOfClass:NSHTTPURLResponse.class] ||
+                httpResponse.statusCode < 200 || httpResponse.statusCode >= 300)
+                return;
+            NSError* jsonError = nil;
+            NSDictionary* payload = [NSJSONSerialization JSONObjectWithData:data
+                                                                     options:0
+                                                                       error:&jsonError];
+            NSString* tagName = [payload isKindOfClass:NSDictionary.class]
+                ? payload[@"tag_name"] : nil;
+            NSString* page = [payload isKindOfClass:NSDictionary.class]
+                ? payload[@"html_url"] : nil;
+            NSURL* pageURL = page.length > 0 ? [NSURL URLWithString:page] : nil;
+            NSString* localVersion = [NSString stringWithUTF8String:PLAY950_VERSION];
+            if (jsonError || tagName.length == 0 || !pageURL ||
+                !isReleaseVersionNewer(tagName, localVersion))
+                return;
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                PLAY950ContentView* strongSelf = weakSelf;
+                if (!strongSelf)
+                    return;
+                strongSelf->_availableReleaseURL = pageURL;
+                strongSelf->_updateButton.title = [NSString stringWithFormat:
+                    @"%@ AVAILABLE ↗", tagName.uppercaseString];
+                strongSelf->_updateButton.toolTip = [NSString stringWithFormat:
+                    @"Open the PLAY950 %@ release page on GitHub.", tagName];
+                strongSelf->_updateButton.hidden = NO;
+                strongSelf->_updateButton.needsDisplay = YES;
+            });
+        }];
+    [task resume];
+}
+
+- (void)openAvailableRelease:(id)sender {
+    (void)sender;
+    if (_availableReleaseURL)
+        [NSWorkspace.sharedWorkspace openURL:_availableReleaseURL];
 }
 
 - (void)updateToolButtonLabels {
