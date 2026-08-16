@@ -34,12 +34,15 @@ to approve it the first time it is scanned.
 
 AKAI Util 4.6.7 is included inside PLAY950. No separate download, EDIT950
 installation, path selection, `chmod` command or other Terminal setup is
-required. PLAY950 uses it read-only only when loading an IMG; loose P9 loading,
-playback and saved-project recall are native.
+required. PLAY950 uses it read-only only when loading an IMG; direct P9/S9
+loading, playback and saved-project recall are native.
 
 ## Start with an empty player
 
 ![PLAY950 before a disk or program has been loaded](images/user-guide/play950-start.png)
+
+*The forced Light appearance demonstrates the adaptive 0.13.3 palette and
+larger editor type. Leave Theme on System to follow macOS automatically.*
 
 The editor has four working areas:
 
@@ -49,6 +52,10 @@ The editor has four working areas:
 - **MIDI** chooses how the program responds to incoming channels and pitch bend.
 
 The FIND950 and EDIT950 buttons are shortcuts into the rest of the suite.
+PLAY950 uses substantially larger editor type in 0.13.3. The **Theme** menu in
+System Status defaults to **System**, following the current macOS appearance;
+choose **Light** or **Dark** when you want the plug-in to stay in one appearance
+regardless of the Mac setting.
 
 ## Keyboard shortcuts
 
@@ -68,7 +75,10 @@ the DAW’s main window and try it again.
    them.
 4. Play a MIDI keyboard or a clip on the track.
 
-![PLAY950 with ALWAYS.IMG loaded and ready to play](images/user-guide/play950-loaded.png)
+![PLAY950 with CONFUSION.IMG loaded and ready to play](images/user-guide/play950-loaded.png)
+
+*A current 0.13.3 editor-host capture with a native IMG program loaded. The
+source remains read-only.*
 
 The yellow dot and **Loaded** message confirm that the sound is ready. The
 program name also appears at the top of the editor.
@@ -182,6 +192,13 @@ PLAY950 does not:
 
 It is meant to recover the musical behaviour of the programs, not to turn the
 DAW into a sampler repair bench.
+
+## Check for updates
+
+PLAY950 checks the latest GitHub release whenever its editor opens. If a newer
+version exists, a compact update button appears in the System panel and opens
+the GitHub release page. There is no automatic download or installation. Quit
+the DAW before replacing `PLAY950.vst3`, then rescan or reopen the host.
 
 ## Quick fixes
 

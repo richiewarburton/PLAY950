@@ -8,6 +8,7 @@
 
 # Local identity explorations; approved production assets live in Resources/.
 /Brand Experiments/
+/TEST - confusion Project/
 
 # Private hardware/native-format fixtures. Tests must use disposable copies.
 /test-media/private/

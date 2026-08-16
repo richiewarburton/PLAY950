@@ -1,10 +1,10 @@
 # PLAY950 project status
 
-Last updated: 14 August 2026
+Last updated: 16 August 2026
 
-PLAY950 0.13.2 is available as a public Universal macOS VST3 community build on
-[GitHub Releases](https://github.com/richiewarburton/PLAY950/releases/tag/v0.13.2).
-The published build is ad-hoc signed and is not Apple-notarized.
+PLAY950 0.13.3 is the current public macOS VST3 community release. The packaged
+plug-in is Universal and ad-hoc signed; it is not Developer ID signed or
+notarized.
 
 ## Working now
 
@@ -18,6 +18,8 @@ The published build is ad-hoc signed and is not Apple-notarized.
   depend on the original source path.
 - Reload an edited IMG, choose from recent images and open the source in
   EDIT950.
+- Check GitHub when the editor opens and show a release-page button only when a
+  newer PLAY950 version is available.
 - Run natively on Apple silicon and Intel without Rosetta.
 
 PLAY950 has one MIDI input, eleven mono audio outputs and no audio input. It
@@ -37,14 +39,10 @@ sampler files and their filesystem locations are not part of this repository.
 The Universal VST3 has also passed the Steinberg validator and native Ableton
 Live smoke tests on Apple silicon.
 
-## Future Developer ID and notarization work
+## Remaining distribution improvements
 
-- Continue listening checks in additional supported DAW hosts.
 - Sign with a Developer ID Application certificate.
 - Notarize and staple the exact release bundle.
-- Repeat clean-machine acceptance for the notarized package on Apple-silicon
-  and Intel Macs.
+- Test the packaged ZIP on clean Apple-silicon and Intel Macs.
 
-These are hardening steps for a future notarized distribution, not blockers to
-the existing public 0.13.2 community release. The release process is documented
-in [RELEASE.md](RELEASE.md).
+The release process is documented in [RELEASE.md](RELEASE.md).
