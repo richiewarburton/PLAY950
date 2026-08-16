@@ -41,6 +41,9 @@ loading, playback and saved-project recall are native.
 
 ![PLAY950 before a disk or program has been loaded](images/user-guide/play950-start.png)
 
+*The forced Light appearance demonstrates the adaptive 0.13.3 palette and
+larger editor type. Leave Theme on System to follow macOS automatically.*
+
 The editor has four working areas:
 
 - **Source** loads a disk or loose program and returns to recent disks.
@@ -72,7 +75,10 @@ the DAW’s main window and try it again.
    them.
 4. Play a MIDI keyboard or a clip on the track.
 
-![PLAY950 with ALWAYS.IMG loaded and ready to play](images/user-guide/play950-loaded.png)
+![PLAY950 with CONFUSION.IMG loaded and ready to play](images/user-guide/play950-loaded.png)
+
+*A current 0.13.3 editor-host capture with a native IMG program loaded. The
+source remains read-only.*
 
 The yellow dot and **Loaded** message confirm that the sound is ready. The
 program name also appears at the top of the editor.

@@ -2,8 +2,9 @@
 
 Last updated: 16 August 2026
 
-PLAY950 0.13.3 is a working macOS VST3 development project. It is not yet a
-signed, notarized public plug-in release.
+PLAY950 0.13.3 is the current public macOS VST3 community release. The packaged
+plug-in is Universal and ad-hoc signed; it is not Developer ID signed or
+notarized.
 
 ## Working now
 
@@ -38,9 +39,8 @@ sampler files and their filesystem locations are not part of this repository.
 The Universal VST3 has also passed the Steinberg validator and native Ableton
 Live smoke tests on Apple silicon.
 
-## Before a packaged public release
+## Remaining distribution improvements
 
-- Complete the remaining listening checks in the supported DAW hosts.
 - Sign with a Developer ID Application certificate.
 - Notarize and staple the exact release bundle.
 - Test the packaged ZIP on clean Apple-silicon and Intel Macs.

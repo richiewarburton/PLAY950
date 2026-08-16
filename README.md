@@ -46,12 +46,11 @@ content with the DAW project.*
 
 ## Current availability
 
-PLAY950 **0.13.2** remains the latest
-[public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest).
-The current source is the working **0.13.3 development version** and must be
-built from source on macOS 14 or later. The current acceptance work uses
-Ableton Live 12, although PLAY950 is a VST3 and is designed around standard
-VST3 hosting.
+PLAY950 **0.13.3** is the current
+[public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest)
+for macOS 14 or later. Acceptance uses Ableton Live 12 and Steinberg's VST3
+editor host and validator, although PLAY950 is designed around standard VST3
+hosting.
 
 PLAY950 models the supported S950 playback, filter and envelope behaviour. It is
 not presented as a circuit-level or component-perfect hardware emulation.

@@ -42,4 +42,5 @@ self-contained IMG-loading work.
 - Strict code-signature verification passed.
 - The real Steinberg editor host rendered System/Dark and forced Light modes
   with the enlarged typography, complete labels and contrasting adaptive
-  controls.
+  controls. Current empty and loaded Light-mode screenshots are included in the
+  README and musician's guide.
