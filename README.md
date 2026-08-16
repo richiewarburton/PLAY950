@@ -78,6 +78,10 @@ and troubleshooting, see the [PLAY950 musician's guide](docs/USER_GUIDE.md).
 7. Use **Open in EDIT950** when you want to alter the image or program; PLAY950
    itself remains a read-only player.
 
+The 0.13.3 editor uses larger type throughout. Its **Theme** menu defaults to
+the macOS System appearance, with explicit Light and Dark choices when a fixed
+plug-in appearance is preferable in the DAW.
+
 The source IMG is opened read-only. Loading a sound cannot rename, delete,
 format or otherwise modify the archive.
 

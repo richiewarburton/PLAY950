@@ -49,6 +49,10 @@ The editor has four working areas:
 - **MIDI** chooses how the program responds to incoming channels and pitch bend.
 
 The FIND950 and EDIT950 buttons are shortcuts into the rest of the suite.
+PLAY950 uses substantially larger editor type in 0.13.3. The **Theme** menu in
+System Status defaults to **System**, following the current macOS appearance;
+choose **Light** or **Dark** when you want the plug-in to stay in one appearance
+regardless of the Mac setting.
 
 ## Keyboard shortcuts
 

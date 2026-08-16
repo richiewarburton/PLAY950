@@ -116,7 +116,7 @@
     if (!enabled)
         subtitleColor = [subtitleColor colorWithAlphaComponent:0.42];
     NSDictionary* subtitleAttributes = @{
-        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:7.2
+        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:9.5
                                                         weight:NSFontWeightRegular],
         NSForegroundColorAttributeName: subtitleColor,
         NSKernAttributeName: @0.5,
@@ -146,6 +146,62 @@
 
 @end
 
+@interface PLAY950Panel : NSView
+@property(nonatomic, strong) NSColor* play950FillColor;
+@property(nonatomic, strong) NSColor* play950StrokeColor;
+@property(nonatomic) CGFloat play950CornerRadius;
+@end
+
+@implementation PLAY950Panel
+
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    NSRect bounds = self.bounds;
+    if (NSWidth(bounds) <= 1.0 || NSHeight(bounds) <= 1.0) {
+        [self.play950FillColor setFill];
+        NSRectFill(bounds);
+        return;
+    }
+    NSBezierPath* shape = [NSBezierPath
+        bezierPathWithRoundedRect:NSInsetRect(bounds, 0.5, 0.5)
+                         xRadius:self.play950CornerRadius
+                         yRadius:self.play950CornerRadius];
+    [self.play950FillColor setFill];
+    [shape fill];
+    if (self.play950StrokeColor) {
+        [self.play950StrokeColor setStroke];
+        shape.lineWidth = 1.0;
+        [shape stroke];
+    }
+}
+
+@end
+
+@interface PLAY950PopUpButton : NSPopUpButton
+@property(nonatomic, strong) NSColor* play950FillColor;
+@property(nonatomic, strong) NSColor* play950ForegroundColor;
+@end
+
+@implementation PLAY950PopUpButton
+
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    self.contentTintColor = self.play950ForegroundColor;
+    self.layer.backgroundColor = self.play950FillColor.CGColor;
+    [super drawRect:dirtyRect];
+}
+
+@end
+
 @interface PLAY950UppercaseTextField : NSTextField
 @end
 
@@ -160,6 +216,14 @@
 namespace {
 
 using e45recordings::play950::Controller;
+
+enum class Play950AppearanceMode : NSInteger {
+    system = 0,
+    light = 1,
+    dark = 2
+};
+
+NSString* const play950AppearancePreferenceKey = @"PLAY950AppearanceMode";
 
 class TemporaryDirectory {
 public:
@@ -300,7 +364,20 @@ NSColor* play950Color(unsigned int rgb, CGFloat alpha = 1.0) {
                               alpha:alpha];
 }
 
+NSColor* play950AdaptiveColor(unsigned int darkRGB, unsigned int lightRGB,
+                              CGFloat darkAlpha = 1.0, CGFloat lightAlpha = 1.0) {
+    return [NSColor colorWithName:nil dynamicProvider:^NSColor*(NSAppearance* appearance) {
+        const NSAppearanceName match = [appearance bestMatchFromAppearancesWithNames:@[
+            NSAppearanceNameDarkAqua, NSAppearanceNameAqua
+        ]];
+        return [match isEqualToString:NSAppearanceNameDarkAqua]
+            ? play950Color(darkRGB, darkAlpha)
+            : play950Color(lightRGB, lightAlpha);
+    }];
+}
+
 NSFont* play950Font(CGFloat size, NSFontWeight weight = NSFontWeightRegular) {
+    size *= 1.25;
     NSArray<NSString*>* candidates = nil;
     if (weight >= NSFontWeightBold) {
         candidates = @[@"JetBrainsMono-Bold", @"JetBrains Mono Bold"];
@@ -342,14 +419,11 @@ NSTextField* play950TrackedLabel(NSString* text, NSRect frame, CGFloat size,
 
 NSView* play950Panel(NSRect frame, NSColor* fill, NSColor* stroke,
                      CGFloat cornerRadius = 6.0) {
-    NSView* panel = [[NSView alloc] initWithFrame:frame];
+    PLAY950Panel* panel = [[PLAY950Panel alloc] initWithFrame:frame];
     panel.wantsLayer = YES;
-    panel.layer.backgroundColor = fill.CGColor;
-    if (stroke) {
-        panel.layer.borderColor = stroke.CGColor;
-        panel.layer.borderWidth = 1.0;
-    }
-    panel.layer.cornerRadius = cornerRadius;
+    panel.play950FillColor = fill;
+    panel.play950StrokeColor = stroke;
+    panel.play950CornerRadius = cornerRadius;
     return panel;
 }
 
@@ -372,11 +446,17 @@ void stylePlay950Menu(NSPopUpButton* menu, NSColor* foreground, NSColor* fill) {
     menu.font = play950Font(12.0, NSFontWeightMedium);
     menu.bordered = NO;
     menu.focusRingType = NSFocusRingTypeNone;
-    menu.contentTintColor = foreground;
     menu.wantsLayer = YES;
-    menu.layer.backgroundColor = fill.CGColor;
     menu.layer.cornerRadius = 6.0;
     menu.layer.masksToBounds = YES;
+    if ([menu isKindOfClass:PLAY950PopUpButton.class]) {
+        PLAY950PopUpButton* playMenu = (PLAY950PopUpButton*)menu;
+        playMenu.play950ForegroundColor = foreground;
+        playMenu.play950FillColor = fill;
+    } else {
+        menu.contentTintColor = foreground;
+        menu.layer.backgroundColor = fill.CGColor;
+    }
 }
 
 NSImage* play950ResourceImage(NSBundle* bundle, NSString* resource) {
@@ -419,6 +499,7 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
 - (void)reloadRecentMenu;
 - (void)updateToolButtonLabels;
 - (void)checkForUpdates;
+- (void)applyResolvedAppearance;
 - (void)loadPath:(std::string)selectedPath reload:(BOOL)isReload;
 - (void)loadPath:(std::string)selectedPath reload:(BOOL)isReload preferredProgram:(NSString*)preferredProgram;
 @end
@@ -438,6 +519,11 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     NSPopUpButton* _midiReceiveMenu;
     NSPopUpButton* _basicMidiChannelMenu;
     NSPopUpButton* _pitchBendRangeMenu;
+    NSPopUpButton* _themeMenu;
+    NSView* _statusLight;
+    NSColor* _canvasColor;
+    NSColor* _borderColor;
+    NSColor* _statusAccentColor;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame controller:(Controller*)controller {
@@ -453,28 +539,41 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
              object:nil
  suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
 
-    // SCANNERS dark-theme palette. Colour is reserved for rules, value bars,
-    // active control surfaces and the approved 950TOOLS marks.
-    NSColor* canvas = play950Color(0x0a0a0c);
-    NSColor* header = play950Color(0x0e0e11);
-    NSColor* slab = play950Color(0x17171c);
-    NSColor* slab2 = play950Color(0x202027);
-    NSColor* rule = play950Color(0xffffff, 0.09);
-    NSColor* rule2 = play950Color(0xffffff, 0.18);
-    NSColor* ink = play950Color(0xf1f1f5);
-    NSColor* label = play950Color(0x8d939d);
-    NSColor* unit = play950Color(0x5e636d);
-    NSColor* red = play950Color(0xff2010);
-    NSColor* yellow = play950Color(0xffc400);
-    NSColor* blue = play950Color(0x3a53ff);
+    NSInteger storedAppearanceMode = [[NSUserDefaults standardUserDefaults]
+        integerForKey:play950AppearancePreferenceKey];
+    if (storedAppearanceMode < 0 || storedAppearanceMode > 2)
+        storedAppearanceMode = 0;
+    const auto appearanceMode = static_cast<Play950AppearanceMode>(storedAppearanceMode);
+    if (appearanceMode == Play950AppearanceMode::light)
+        self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    else if (appearanceMode == Play950AppearanceMode::dark)
+        self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    else
+        self.appearance = nil;
 
-    self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    // Adaptive 950TOOLS palette. Colour remains reserved for rules, value bars,
+    // active control surfaces and the approved product marks.
+    NSColor* canvas = play950AdaptiveColor(0x0a0a0c, 0xf3f2ed);
+    NSColor* header = play950AdaptiveColor(0x0e0e11, 0xfbfaf6);
+    NSColor* slab = play950AdaptiveColor(0x17171c, 0xe7e5de);
+    NSColor* slab2 = play950AdaptiveColor(0x202027, 0xdcd9d1);
+    NSColor* rule = play950AdaptiveColor(0xffffff, 0x000000, 0.09, 0.10);
+    NSColor* rule2 = play950AdaptiveColor(0xffffff, 0x000000, 0.18, 0.20);
+    NSColor* ink = play950AdaptiveColor(0xf1f1f5, 0x17181b);
+    NSColor* label = play950AdaptiveColor(0x8d939d, 0x505761);
+    NSColor* unit = play950AdaptiveColor(0x5e636d, 0x737983);
+    NSColor* red = play950AdaptiveColor(0xff2010, 0xd52a1c);
+    NSColor* yellow = play950AdaptiveColor(0xffc400, 0xb77600);
+    NSColor* blue = play950AdaptiveColor(0x3a53ff, 0x2648d8);
+    _canvasColor = canvas;
+    _borderColor = rule2;
+    _statusAccentColor = yellow;
+
     self.wantsLayer = YES;
-    self.layer.backgroundColor = canvas.CGColor;
-    self.layer.borderColor = rule2.CGColor;
     self.layer.borderWidth = 1.0;
     self.layer.cornerRadius = 10.0;
     self.layer.masksToBounds = YES;
+    [self applyResolvedAppearance];
 
     NSView* headerPanel = play950Panel(NSMakeRect(0, 436, 760, 64), header, nil, 0.0);
     [self addSubview:headerPanel];
@@ -487,11 +586,11 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     NSImage* editLogo = play950ResourceImage(bundle, @"EDIT950Logo");
     if (playLogo)
         [self addSubview:play950ImageView(playLogo, NSMakeRect(18, 448, 40, 40))];
-    [self addSubview:play950TrackedLabel(@"PLAY950", NSMakeRect(70, 462, 102, 19),
+    [self addSubview:play950TrackedLabel(@"PLAY950", NSMakeRect(70, 462, 110, 19),
         15.0, NSFontWeightBold, 3.4, ink)];
     [self addSubview:play950TrackedLabel(
         [NSString stringWithFormat:@"V%s · VST3", PLAY950_VERSION],
-        NSMakeRect(70, 447, 102, 12), 8.5, NSFontWeightRegular, 1.0, unit)];
+        NSMakeRect(70, 447, 110, 12), 8.5, NSFontWeightRegular, 1.0, unit)];
 
     [self addSubview:play950Panel(NSMakeRect(184, 449, 558, 38), slab, nil, 6.0)];
     [self addSubview:play950TrackedLabel(@"PROGRAM", NSMakeRect(196, 463, 70, 13),
@@ -519,8 +618,8 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     stylePlay950Button(_openButton, slab, ink, nil, blue);
     [self addSubview:_openButton];
 
-    _recentMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(208, 353, 322, 42)
-                                              pullsDown:YES];
+    _recentMenu = [[PLAY950PopUpButton alloc] initWithFrame:NSMakeRect(208, 353, 322, 42)
+                                                   pullsDown:YES];
     stylePlay950Menu(_recentMenu, ink, slab);
     [self addSubview:_recentMenu];
     addPlay950AccentBar(self, NSMakeRect(208, 353, 322, 4), blue);
@@ -534,8 +633,8 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
 
     // PROGRAM group.
     addPlay950GroupHeading(self, @"PROGRAM", NSMakeRect(18, 319, 724, 15), ink, yellow);
-    _programMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(18, 265, 724, 44)
-                                               pullsDown:NO];
+    _programMenu = [[PLAY950PopUpButton alloc] initWithFrame:NSMakeRect(18, 265, 724, 44)
+                                                    pullsDown:NO];
     _programMenu.target = self;
     _programMenu.action = @selector(selectProgram:);
     stylePlay950Menu(_programMenu, ink, slab);
@@ -548,12 +647,11 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     [self addSubview:play950Panel(NSMakeRect(18, 46, 350, 171), slab, nil, 6.0)];
     [self addSubview:play950TrackedLabel(@"SYSTEM STATUS", NSMakeRect(30, 190, 160, 14),
         9.5, NSFontWeightRegular, 1.6, label)];
-    NSView* statusLight = play950Panel(NSMakeRect(30, 164, 8, 8), yellow, nil, 4.0);
-    statusLight.layer.shadowColor = yellow.CGColor;
-    statusLight.layer.shadowOpacity = 0.60;
-    statusLight.layer.shadowRadius = 4.0;
-    statusLight.layer.shadowOffset = CGSizeZero;
-    [self addSubview:statusLight];
+    _statusLight = play950Panel(NSMakeRect(30, 164, 8, 8), yellow, nil, 4.0);
+    _statusLight.layer.shadowOpacity = 0.60;
+    _statusLight.layer.shadowRadius = 4.0;
+    _statusLight.layer.shadowOffset = CGSizeZero;
+    [self addSubview:_statusLight];
     _status = [[PLAY950UppercaseTextField alloc] initWithFrame:NSMakeRect(50, 105, 306, 73)];
     _status.bezeled = NO;
     _status.editable = NO;
@@ -566,9 +664,15 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     _status.stringValue = [NSString stringWithUTF8String:_controller->statusText().c_str()];
     [self addSubview:_status];
     [self addSubview:play950Panel(NSMakeRect(30, 91, 326, 1), rule, nil, 0.0)];
-    [self addSubview:play950TrackedLabel(
-        [NSString stringWithFormat:@"PLAY950 %s · MACOS VST3 · STEREO", PLAY950_VERSION],
-        NSMakeRect(30, 63, 178, 14), 8.5, NSFontWeightRegular, 1.0, unit)];
+    _themeMenu = [[PLAY950PopUpButton alloc] initWithFrame:NSMakeRect(30, 55, 172, 30)
+                                                  pullsDown:NO];
+    [_themeMenu addItemsWithTitles:@[@"THEME · SYSTEM", @"THEME · LIGHT", @"THEME · DARK"]];
+    [_themeMenu selectItemAtIndex:static_cast<NSInteger>(appearanceMode)];
+    _themeMenu.target = self;
+    _themeMenu.action = @selector(changeAppearance:);
+    _themeMenu.toolTip = @"Follow macOS appearance, or force PLAY950 light or dark.";
+    stylePlay950Menu(_themeMenu, ink, slab2);
+    [self addSubview:_themeMenu];
     _updateButton = [[PLAY950Button alloc] initWithFrame:NSMakeRect(216, 55, 140, 30)];
     _updateButton.target = self;
     _updateButton.action = @selector(openAvailableRelease:);
@@ -588,9 +692,9 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     _find950Button.play950Subtitle = @"OPEN FIND950 ↗";
     _find950Button.play950Icon = findLogo;
     stylePlay950Button(_find950Button, slab, ink, nil, blue);
-    _find950Button.font = play950Font(9.2, NSFontWeightBold);
+    _find950Button.font = play950Font(8.6, NSFontWeightBold);
     _find950Button.play950SubtitleColor = label;
-    _find950Button.play950IconSize = 48.0;
+    _find950Button.play950IconSize = 38.0;
     [self addSubview:_find950Button];
 
     _editorButton = [[PLAY950Button alloc] initWithFrame:NSMakeRect(567, 151, 175, 66)];
@@ -600,9 +704,9 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     _editorButton.play950Subtitle = @"OPEN IN EDIT950 ↗";
     _editorButton.play950Icon = editLogo;
     stylePlay950Button(_editorButton, slab, ink, nil, yellow);
-    _editorButton.font = play950Font(9.2, NSFontWeightBold);
+    _editorButton.font = play950Font(8.6, NSFontWeightBold);
     _editorButton.play950SubtitleColor = label;
-    _editorButton.play950IconSize = 48.0;
+    _editorButton.play950IconSize = 38.0;
     [self addSubview:_editorButton];
 
     // MIDI group: hardware-style receive mode and base channel plus bend range.
@@ -611,8 +715,8 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
 
     [self addSubview:play950TrackedLabel(@"RECEIVE", NSMakeRect(392, 87, 108, 12),
         8.5, NSFontWeightRegular, 1.2, label)];
-    _midiReceiveMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(392, 50, 108, 34)
-                                                    pullsDown:NO];
+    _midiReceiveMenu = [[PLAY950PopUpButton alloc] initWithFrame:NSMakeRect(392, 50, 108, 34)
+                                                         pullsDown:NO];
     [_midiReceiveMenu addItemWithTitle:@"OMNI"];
     [_midiReceiveMenu addItemWithTitle:@"KG CHANNELS"];
     [_midiReceiveMenu selectItemAtIndex:_controller->midiOmni() ? 0 : 1];
@@ -624,8 +728,8 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
 
     [self addSubview:play950TrackedLabel(@"BASIC CH", NSMakeRect(507, 87, 108, 12),
         8.5, NSFontWeightRegular, 1.2, label)];
-    _basicMidiChannelMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(507, 50, 108, 34)
-                                                         pullsDown:NO];
+    _basicMidiChannelMenu = [[PLAY950PopUpButton alloc] initWithFrame:NSMakeRect(507, 50, 108, 34)
+                                                              pullsDown:NO];
     for (int channel = 1; channel <= 16; ++channel) {
         [_basicMidiChannelMenu addItemWithTitle:[NSString stringWithFormat:@"CH %02d", channel]];
     }
@@ -638,8 +742,8 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
 
     [self addSubview:play950TrackedLabel(@"BEND", NSMakeRect(622, 87, 108, 12),
         8.5, NSFontWeightRegular, 1.2, label)];
-    _pitchBendRangeMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(622, 50, 108, 34)
-                                                       pullsDown:NO];
+    _pitchBendRangeMenu = [[PLAY950PopUpButton alloc] initWithFrame:NSMakeRect(622, 50, 108, 34)
+                                                            pullsDown:NO];
     for (int semitones = 1; semitones <= 12; ++semitones) {
         [_pitchBendRangeMenu addItemWithTitle:[NSString stringWithFormat:@"%d ST", semitones]];
     }
@@ -665,6 +769,45 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     }
     [self checkForUpdates];
     return self;
+}
+
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    [self applyResolvedAppearance];
+}
+
+- (void)applyResolvedAppearance {
+    if (!_canvasColor || !_borderColor || !self.layer)
+        return;
+    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        self.layer.backgroundColor = self->_canvasColor.CGColor;
+        self.layer.borderColor = self->_borderColor.CGColor;
+        if (self->_statusLight)
+            self->_statusLight.layer.shadowColor = self->_statusAccentColor.CGColor;
+    }];
+    NSMutableArray<NSView*>* pending = [NSMutableArray arrayWithObject:self];
+    while (pending.count > 0) {
+        NSView* view = pending.lastObject;
+        [pending removeLastObject];
+        view.needsDisplay = YES;
+        [pending addObjectsFromArray:view.subviews];
+    }
+}
+
+- (void)changeAppearance:(id)sender {
+    (void)sender;
+    const NSInteger selected = std::max<NSInteger>(
+        0, std::min<NSInteger>(2, _themeMenu.indexOfSelectedItem));
+    [[NSUserDefaults standardUserDefaults] setInteger:selected
+                                               forKey:play950AppearancePreferenceKey];
+    const auto mode = static_cast<Play950AppearanceMode>(selected);
+    if (mode == Play950AppearanceMode::light)
+        self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    else if (mode == Play950AppearanceMode::dark)
+        self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    else
+        self.appearance = nil;
+    [self applyResolvedAppearance];
 }
 
 - (void)checkForUpdates {
