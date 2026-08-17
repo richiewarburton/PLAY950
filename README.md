@@ -11,12 +11,12 @@
 ## Play the programs inside your old S900/S950 disk images in a DAW
 
 Your `.img` backups contain more than audio. They contain the P9 programs that
-mapped samples across the keyboard, tuned them, looped them, switched velocity
-layers and routed them to the sampler outputs. Exporting everything as WAV loses
+map samples across the keyboard, tune them, loop them, switch velocity
+layers and route them to the sampler outputs. Exporting everything as WAV loses
 that musical structure.
 
 PLAY950 is a macOS VST3 instrument that loads the native program and its linked
-S9 samples so the recovered sound can be played from a MIDI track. When the DAW
+S9 samples so the sample programs can be played from a MIDI track. When the DAW
 project is saved, PLAY950 embeds the required native content in its plug-in
 state. Reopening the project does not depend on the original IMG still being
 mounted or living at the same path.
@@ -27,12 +27,12 @@ This is for musicians who:
 - copied an S900/S950 archive from a Gotek or USB collection;
 - no longer own the sampler but still want to use its programs;
 - want original keygroups, tuning and loops rather than a folder of WAVs; or
-- want old sampler sounds to recall with an Ableton Live Set; or
+- want old sampler sounds to recall with a DAW; or
 - enjoy the creative discipline of an 800 KB or 1.6 MB floppy: limited sample
   memory, limited directory slots and a small, deliberate palette of sounds.
 
 You do **not** need the original hardware. If your preservation workflow
-produced a compatible `.img`, PLAY950 can load from that image read-only.
+produced a compatible `.img`, PLAY950 can load from that image, read-only.
 
 The floppy constraint can be the point rather than an inconvenience. Build a
 small working IMG in EDIT950, decide what deserves the available
