@@ -92,7 +92,7 @@ Steinberg::tresult PLUGIN_API Processor::initialize(Steinberg::FUnknown* context
     if (result != Steinberg::kResultOk)
         return result;
 
-    addEventInput(STR16("MIDI In"), 1);
+    addEventInput(STR16("MIDI In"), 16);
     addAudioOutput(STR16("All(00)"), Steinberg::Vst::SpeakerArr::kMono);
     addAudioOutput(STR16("Mono(01)"), Steinberg::Vst::SpeakerArr::kMono,
                    Steinberg::Vst::BusTypes::kAux);
