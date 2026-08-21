@@ -65,7 +65,7 @@ public:
     [[nodiscard]] bool isNoteActive(std::int32_t pitch, std::int32_t noteId) const noexcept;
 
 private:
-    static constexpr double monophonicHandoverMaximumSeconds = 0.001;
+    static constexpr double monophonicHandoverMaximumSeconds = 0.010;
     static constexpr float monophonicHandoverNearZero = 1.0e-5F;
 
     struct EnvelopeState {
@@ -120,7 +120,6 @@ private:
     PreparedProgram program_;
     std::array<Voice, voiceCount> voices_ {};
     std::array<std::optional<PendingNote>, 8> pendingMonophonicNotes_ {};
-    std::array<float, 8> previousMonophonicOutputs_ {};
     std::array<std::uint64_t, 8> monophonicHandoverSamples_ {};
     double hostSampleRate_ {44'100.0};
     std::uint64_t nextAge_ {1};

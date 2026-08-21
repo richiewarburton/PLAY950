@@ -78,7 +78,6 @@ void ProgramVoicePool::setProgram(PreparedProgram program) {
     for (auto& voice : voices_)
         voice = {};
     pendingMonophonicNotes_ = {};
-    previousMonophonicOutputs_ = {};
     monophonicHandoverSamples_ = {};
     nextAge_ = 1;
 }
@@ -163,7 +162,6 @@ void ProgramVoicePool::completeMonophonicHandover(
     const auto note = *pendingMonophonicNotes_[outputIndex];
     pendingMonophonicNotes_[outputIndex].reset();
     monophonicHandoverSamples_[outputIndex] = 0;
-    previousMonophonicOutputs_[outputIndex] = 0.0F;
     initializeVoice(voice, note);
 }
 
@@ -444,10 +442,7 @@ void ProgramVoicePool::renderAdd(
                     if (outputs[monoBus]) outputs[monoBus][frame] += value;
                     if (outputs[sideBus]) outputs[sideBus][frame] += value;
                     if (pendingMonophonicNotes_[outputIndex]) {
-                        const float previous = previousMonophonicOutputs_[outputIndex];
                         const bool nearZero = std::abs(value) <= monophonicHandoverNearZero;
-                        const bool crossed = (previous > 0.0F && value <= 0.0F) ||
-                                             (previous < 0.0F && value >= 0.0F);
                         const auto maximumSamples = std::max<std::uint64_t>(
                             1, static_cast<std::uint64_t>(
                                    std::ceil(hostSampleRate_ *
@@ -457,12 +452,11 @@ void ProgramVoicePool::renderAdd(
                         // Temporary S950-emulation measure pending matched hardware
                         // recordings: no crossfade is used, the replacement attack is
                         // untouched, and old/new never overlap. The old sample at the
-                        // crossing (or 1.0 ms timeout) is emitted; the freshly initialized
+                        // near-zero point (or 10 ms timeout) is emitted; the freshly initialized
                         // replacement begins on the following output sample.
-                        if (nearZero || crossed || timedOut)
+                        if (nearZero || timedOut)
                             completeMonophonicHandover(outputIndex, voice);
                     }
-                    previousMonophonicOutputs_[outputIndex] = value;
                     break;
                 }
                 case formats::P9OutputKind::left:

@@ -156,7 +156,7 @@ int main() {
         auto handoverProgram = [] {
             audio::PreparedProgram result;
             auto oldSample = loopingRamp();
-            oldSample.samples12 = {1024, 512, -512, -1024};
+            oldSample.samples12 = {1024, 512, 0, -1024};
             oldSample.nominalPitchSixteenths = 80 * 16;
             oldSample.playbackEnd = oldSample.samples12.size();
             result.samples.push_back(oldSample);
@@ -205,10 +205,8 @@ int main() {
         handoverStorage = {};
         handoverPool.renderAdd(handoverOutputs, 4);
         require(std::abs(handoverStorage[0][0] - 0.25F) < 0.0001F &&
-                    std::abs(handoverStorage[0][1] + 0.25F) < 0.0001F,
-                "retiring voice did not render through its sign-changing zero crossing");
-        require(handoverStorage[0][0] > 0.0F && handoverStorage[0][1] < 0.0F,
-                "waveform did not bracket zero at the handover crossing");
+                    std::abs(handoverStorage[0][1]) < 0.0001F,
+                "retiring voice did not render through its actual near-zero sample");
         require(std::abs(handoverStorage[0][2] - freshStorage[0][0]) < 0.0001F &&
                     std::abs(handoverStorage[0][3] - freshStorage[0][1]) < 0.0001F,
                 "replacement transient, playback start, or envelopes were modified");
@@ -272,11 +270,16 @@ int main() {
         timeoutPool.renderAdd(freshOutputs, 1);
         timeoutPool.noteOn(81, 441, 1.0F);
         freshStorage = {};
-        timeoutPool.renderAdd(freshOutputs, 2);
-        require(std::abs(freshStorage[0][0] - 0.5F) < 0.0001F &&
-                    std::abs(freshStorage[0][1] - 0.75F) < 0.0001F &&
+        std::array<std::array<float, 12>, audio::ProgramVoicePool::outputCount>
+            timeoutStorage {};
+        audio::ProgramVoicePool::OutputBuffers timeoutOutputs {};
+        for (std::size_t bus = 0; bus < timeoutOutputs.size(); ++bus)
+            timeoutOutputs[bus] = timeoutStorage[bus].data();
+        timeoutPool.renderAdd(timeoutOutputs, 11);
+        require(std::abs(timeoutStorage[0][9] - 0.5F) < 0.0001F &&
+                    std::abs(timeoutStorage[0][10] - 0.75F) < 0.0001F &&
                     timeoutPool.isNoteActive(81, 441),
-                "1.0 ms monophonic handover timeout was not enforced");
+                "10 ms monophonic handover timeout was not enforced");
 
         audio::ProgramVoicePool layerPool;
         audio::PreparedProgram layerProgram;
