@@ -589,8 +589,8 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
     [self addSubview:play950TrackedLabel(@"PLAY950", NSMakeRect(70, 462, 110, 19),
         15.0, NSFontWeightBold, 3.4, ink)];
     [self addSubview:play950TrackedLabel(
-        [NSString stringWithFormat:@"V%s · CLICKFIX2", PLAY950_VERSION],
-        NSMakeRect(70, 447, 110, 12), 8.5, NSFontWeightRegular, 1.0, unit)];
+        [NSString stringWithFormat:@"V%s · CLICKFIX3 · 2.5MS", PLAY950_VERSION],
+        NSMakeRect(70, 447, 150, 12), 8.5, NSFontWeightRegular, 0.7, unit)];
 
     [self addSubview:play950Panel(NSMakeRect(184, 449, 558, 38), slab, nil, 6.0)];
     [self addSubview:play950TrackedLabel(@"PROGRAM", NSMakeRect(196, 463, 70, 13),

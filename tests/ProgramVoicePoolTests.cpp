@@ -133,14 +133,8 @@ int main() {
 
         pool.noteOn(60, 101, 1.0F);
         require(pool.activeVoiceCount() == 1, "mono output accepted two voices");
-        require(pool.isNoteActive(60, 100) && !pool.isNoteActive(60, 101),
-                "mono output replacement was not deferred");
-        storage = {};
-        pool.renderAdd(outputs, 2);
-        storage = {};
-        pool.renderAdd(outputs, 2);
         require(!pool.isNoteActive(60, 100) && pool.isNoteActive(60, 101),
-                "mono output did not complete its deferred replacement");
+                "mono replacement did not start immediately");
 
         pool.noteOn(61, 102, 1.0F);
         pool.noteOn(62, 103, 1.0F);
@@ -181,39 +175,36 @@ int main() {
         freshReplacementPool.setProgram(handoverProgram());
         freshReplacementPool.setHostSampleRate(48'000.0);
         freshReplacementPool.noteOn(81, 401, 1.0F);
-        std::array<std::array<float, 4>, audio::ProgramVoicePool::outputCount>
+        std::array<std::array<float, 128>, audio::ProgramVoicePool::outputCount>
             freshStorage {};
         audio::ProgramVoicePool::OutputBuffers freshOutputs {};
         for (std::size_t bus = 0; bus < freshOutputs.size(); ++bus)
             freshOutputs[bus] = freshStorage[bus].data();
-        freshReplacementPool.renderAdd(freshOutputs, 2);
+        freshReplacementPool.renderAdd(freshOutputs, 121);
 
         audio::ProgramVoicePool handoverPool;
         handoverPool.setProgram(handoverProgram());
         handoverPool.setHostSampleRate(48'000.0);
         handoverPool.noteOn(80, 400, 1.0F);
-        std::array<std::array<float, 4>, audio::ProgramVoicePool::outputCount>
+        std::array<std::array<float, 128>, audio::ProgramVoicePool::outputCount>
             handoverStorage {};
         audio::ProgramVoicePool::OutputBuffers handoverOutputs {};
         for (std::size_t bus = 0; bus < handoverOutputs.size(); ++bus)
             handoverOutputs[bus] = handoverStorage[bus].data();
         handoverPool.renderAdd(handoverOutputs, 1);
         handoverPool.noteOn(81, 401, 1.0F);
-        require(handoverPool.isNoteActive(80, 400) &&
-                    !handoverPool.isNoteActive(81, 401),
-                "individual-output replacement did not remain pending");
-        handoverStorage = {};
-        handoverPool.renderAdd(handoverOutputs, 4);
-        require(std::abs(handoverStorage[0][0] - 0.25F) < 0.0001F &&
-                    std::abs(handoverStorage[0][1]) < 0.0001F,
-                "retiring voice did not render through its actual near-zero sample");
-        require(std::abs(handoverStorage[0][2] - freshStorage[0][0]) < 0.0001F &&
-                    std::abs(handoverStorage[0][3] - freshStorage[0][1]) < 0.0001F,
-                "replacement transient, playback start, or envelopes were modified");
         require(!handoverPool.isNoteActive(80, 400) &&
-                    handoverPool.isNoteActive(81, 401) &&
-                    handoverPool.activeVoiceCount() == 1,
-                "old and replacement voices overlapped after handover");
+                    handoverPool.isNoteActive(81, 401),
+                "individual-output replacement did not start immediately");
+        handoverStorage = {};
+        handoverPool.renderAdd(handoverOutputs, 121);
+        require(std::abs((handoverStorage[0][0] - freshStorage[0][0]) - 0.25F) <
+                    0.0001F,
+                "retiring voice was not summed with the untouched replacement attack");
+        require(std::abs(handoverStorage[0][120] - freshStorage[0][120]) < 0.0001F,
+                "2.5 ms retiring voice was not silent after 120 samples at 48 kHz");
+        require(handoverPool.activeVoiceCount() == 1,
+                "retiring storage changed the logical monophonic voice count");
 
         audio::ProgramVoicePool priorityPool;
         priorityPool.setProgram(handoverProgram());
@@ -223,12 +214,9 @@ int main() {
         priorityPool.renderAdd(freshOutputs, 1);
         priorityPool.noteOn(81, 411, 1.0F);
         priorityPool.noteOn(82, 412, 1.0F);
-        freshStorage = {};
-        priorityPool.renderAdd(freshOutputs, 4);
-        require(std::abs(freshStorage[0][2] - 0.125F) < 0.0001F &&
-                    priorityPool.isNoteActive(82, 412) &&
+        require(priorityPool.isNoteActive(82, 412) &&
                     !priorityPool.isNoteActive(81, 411),
-                "newest pending note did not win monophonic handover");
+                "newest note did not immediately win monophonic output");
 
         audio::ProgramVoicePool cancelledPool;
         cancelledPool.setProgram(handoverProgram());
@@ -238,11 +226,9 @@ int main() {
         cancelledPool.renderAdd(freshOutputs, 1);
         cancelledPool.noteOn(81, 421, 1.0F);
         cancelledPool.noteOff(81, 421);
-        freshStorage = {};
-        cancelledPool.renderAdd(freshOutputs, 4);
-        require(cancelledPool.isNoteActive(80, 420) &&
+        require(!cancelledPool.isNoteActive(80, 420) &&
                     !cancelledPool.isNoteActive(81, 421),
-                "note-off did not cancel a pending non-One-Shot note");
+                "note-off did not stop the active replacement note");
 
         auto oneShotProgram = handoverProgram();
         oneShotProgram.keygroups[1].oneShot = true;
@@ -257,29 +243,7 @@ int main() {
         freshStorage = {};
         oneShotPendingPool.renderAdd(freshOutputs, 4);
         require(oneShotPendingPool.isNoteActive(81, 431),
-                "note-off incorrectly cancelled a pending One Shot note");
-
-        auto timeoutProgram = handoverProgram();
-        timeoutProgram.samples[0].samples12 = {1024, 1024};
-        timeoutProgram.samples[0].playbackEnd = 2;
-        audio::ProgramVoicePool timeoutPool;
-        timeoutPool.setProgram(std::move(timeoutProgram));
-        timeoutPool.setHostSampleRate(1'000.0);
-        timeoutPool.noteOn(80, 440, 1.0F);
-        freshStorage = {};
-        timeoutPool.renderAdd(freshOutputs, 1);
-        timeoutPool.noteOn(81, 441, 1.0F);
-        freshStorage = {};
-        std::array<std::array<float, 12>, audio::ProgramVoicePool::outputCount>
-            timeoutStorage {};
-        audio::ProgramVoicePool::OutputBuffers timeoutOutputs {};
-        for (std::size_t bus = 0; bus < timeoutOutputs.size(); ++bus)
-            timeoutOutputs[bus] = timeoutStorage[bus].data();
-        timeoutPool.renderAdd(timeoutOutputs, 11);
-        require(std::abs(timeoutStorage[0][9] - 0.5F) < 0.0001F &&
-                    std::abs(timeoutStorage[0][10] - 0.75F) < 0.0001F &&
-                    timeoutPool.isNoteActive(81, 441),
-                "10 ms monophonic handover timeout was not enforced");
+                "note-off incorrectly cancelled a replacement One Shot note");
 
         audio::ProgramVoicePool layerPool;
         audio::PreparedProgram layerProgram;

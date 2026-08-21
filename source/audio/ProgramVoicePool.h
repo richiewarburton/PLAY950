@@ -65,8 +65,7 @@ public:
     [[nodiscard]] bool isNoteActive(std::int32_t pitch, std::int32_t noteId) const noexcept;
 
 private:
-    static constexpr double monophonicHandoverMaximumSeconds = 0.010;
-    static constexpr float monophonicHandoverNearZero = 1.0e-5F;
+    static constexpr double monophonicRetirementSeconds = 0.0025;
 
     struct EnvelopeState {
         enum class Stage { attack, decay, sustain, release, done };
@@ -110,17 +109,24 @@ private:
         bool useLoudLayer {false};
     };
 
+    struct RetiringVoice {
+        Voice voice;
+        std::uint64_t samplesRemaining {0};
+        std::uint64_t totalSamples {0};
+    };
+
     [[nodiscard]] Voice& voiceForNewNote() noexcept;
     void enforceOutputLimits(formats::P9Output output) noexcept;
     void initializeVoice(Voice& voice, const PendingNote& note) noexcept;
-    void completeMonophonicHandover(std::size_t outputIndex, Voice& voice) noexcept;
+    void retireMonophonicVoice(const Voice& voice) noexcept;
+    void addToOutput(const OutputBuffers& outputs, std::int32_t frame,
+                     const Voice& voice, float value) const noexcept;
     float nextSample(Voice& voice) noexcept;
     float advanceEnvelope(EnvelopeState& envelope) const noexcept;
 
     PreparedProgram program_;
     std::array<Voice, voiceCount> voices_ {};
-    std::array<std::optional<PendingNote>, 8> pendingMonophonicNotes_ {};
-    std::array<std::uint64_t, 8> monophonicHandoverSamples_ {};
+    std::array<RetiringVoice, 8> retiringMonophonicVoices_ {};
     double hostSampleRate_ {44'100.0};
     std::uint64_t nextAge_ {1};
     std::array<double, midiChannelCount> pitchBendRatios_ {
