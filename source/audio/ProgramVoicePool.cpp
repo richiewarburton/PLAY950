@@ -77,6 +77,9 @@ void ProgramVoicePool::setProgram(PreparedProgram program) {
     program_ = std::move(program);
     for (auto& voice : voices_)
         voice = {};
+    pendingMonophonicNotes_ = {};
+    previousMonophonicOutputs_ = {};
+    monophonicHandoverSamples_ = {};
     nextAge_ = 1;
 }
 
@@ -100,14 +103,6 @@ ProgramVoicePool::Voice& ProgramVoicePool::voiceForNewNote() noexcept {
 }
 
 void ProgramVoicePool::enforceOutputLimits(formats::P9Output output) noexcept {
-    if (output.kind() == formats::P9OutputKind::mono) {
-        for (auto& voice : voices_) {
-            if (voice.active && voice.output.kind() == formats::P9OutputKind::mono &&
-                voice.output.raw == output.raw)
-                voice.active = false;
-        }
-    }
-
     const int side = sideFor(output);
     if (side < 0)
         return;
@@ -122,6 +117,54 @@ void ProgramVoicePool::enforceOutputLimits(formats::P9Output output) noexcept {
     }
     if (count >= 4 && oldest)
         oldest->active = false;
+}
+
+void ProgramVoicePool::initializeVoice(Voice& voice, const PendingNote& note) noexcept {
+    const auto& sample = program_.samples[note.sampleIndex];
+    const auto& keygroup = program_.keygroups[note.keygroupIndex];
+    voice = {};
+    voice.active = true;
+    voice.midiChannel = note.midiChannel;
+    voice.pitch = note.pitch;
+    voice.noteId = note.noteId;
+    voice.gain = 1.0F;
+    voice.playbackDirection = sample.direction == formats::S9Direction::reverse ? -1 : 1;
+    voice.position = voice.playbackDirection > 0
+                         ? static_cast<double>(sample.playbackStart)
+                         : static_cast<double>(sample.playbackEnd - 1);
+    voice.sampleIndex = note.sampleIndex;
+    voice.keygroupIndex = note.keygroupIndex;
+    voice.output = keygroup.output;
+    voice.oneShot = keygroup.oneShot;
+    voice.velocity = note.velocity;
+    voice.baseFilter = static_cast<float>(note.useLoudLayer ? keygroup.loudFilter
+                                                            : keygroup.softFilter);
+    const auto loudness = note.useLoudLayer ? keygroup.loudLoudness : keygroup.softLoudness;
+    voice.loudnessGain = loudnessGain(sample.loudnessOffset, loudness,
+                                      keygroup.velocityToLoudness, voice.velocity);
+    voice.amplitude = {keygroup.amplitudeEnvelope,
+                       EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
+    voice.filter = {keygroup.filterEnvelope,
+                    EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
+    voice.age = nextAge_++;
+    const double pitchSixteenths = keygroup.constantPitch
+        ? static_cast<double>(sample.nominalPitchSixteenths) + note.tuningSixteenths
+        : static_cast<double>(note.pitch * 16) + note.tuningSixteenths;
+    const double semitones =
+        (pitchSixteenths - sample.nominalPitchSixteenths) / 192.0;
+    voice.increment = static_cast<double>(sample.sampleRate) / hostSampleRate_ *
+                      std::pow(2.0, semitones);
+}
+
+void ProgramVoicePool::completeMonophonicHandover(
+    std::size_t outputIndex, Voice& voice) noexcept {
+    if (!pendingMonophonicNotes_[outputIndex])
+        return;
+    const auto note = *pendingMonophonicNotes_[outputIndex];
+    pendingMonophonicNotes_[outputIndex].reset();
+    monophonicHandoverSamples_[outputIndex] = 0;
+    previousMonophonicOutputs_[outputIndex] = 0.0F;
+    initializeVoice(voice, note);
 }
 
 void ProgramVoicePool::noteOn(
@@ -155,40 +198,29 @@ void ProgramVoicePool::noteOn(
         sample.playbackEnd <= sample.playbackStart)
         return;
 
+    const PendingNote note {
+        channel, pitch, noteId, static_cast<float>(midiVelocity) / 127.0F,
+        *sampleIndex, static_cast<std::size_t>(keygroup - program_.keygroups.begin()),
+        tuning, useLoudLayer};
+    if (keygroup->output.kind() == formats::P9OutputKind::mono &&
+        keygroup->output.raw < pendingMonophonicNotes_.size()) {
+        const auto outputIndex = static_cast<std::size_t>(keygroup->output.raw);
+        const bool occupied = std::any_of(voices_.begin(), voices_.end(),
+                                          [&](const Voice& voice) {
+            return voice.active && voice.output.kind() == formats::P9OutputKind::mono &&
+                   voice.output.raw == keygroup->output.raw;
+        });
+        if (occupied) {
+            if (!pendingMonophonicNotes_[outputIndex])
+                monophonicHandoverSamples_[outputIndex] = 0;
+            pendingMonophonicNotes_[outputIndex] = note;
+            return;
+        }
+    }
+
     enforceOutputLimits(keygroup->output);
     auto& voice = voiceForNewNote();
-    voice.active = true;
-    voice.midiChannel = channel;
-    voice.pitch = pitch;
-    voice.noteId = noteId;
-    voice.gain = 1.0F;
-    voice.playbackDirection = sample.direction == formats::S9Direction::reverse ? -1 : 1;
-    voice.position = voice.playbackDirection > 0
-                         ? static_cast<double>(sample.playbackStart)
-                         : static_cast<double>(sample.playbackEnd - 1);
-    voice.sampleIndex = *sampleIndex;
-    voice.keygroupIndex = static_cast<std::size_t>(keygroup - program_.keygroups.begin());
-    voice.output = keygroup->output;
-    voice.oneShot = keygroup->oneShot;
-    voice.velocity = static_cast<float>(midiVelocity) / 127.0F;
-    voice.baseFilter = static_cast<float>(useLoudLayer ? keygroup->loudFilter
-                                                       : keygroup->softFilter);
-    const auto loudness = useLoudLayer ? keygroup->loudLoudness : keygroup->softLoudness;
-    voice.loudnessGain = loudnessGain(sample.loudnessOffset, loudness,
-                                      keygroup->velocityToLoudness, voice.velocity);
-    voice.amplitude = {keygroup->amplitudeEnvelope,
-                       EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
-    voice.filter = {keygroup->filterEnvelope,
-                    EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
-    voice.filterState = {};
-    voice.age = nextAge_++;
-    const double pitchSixteenths = keygroup->constantPitch
-        ? static_cast<double>(sample.nominalPitchSixteenths) + tuning
-        : static_cast<double>(pitch * 16) + tuning;
-    const double semitones =
-        (pitchSixteenths - sample.nominalPitchSixteenths) / 192.0;
-    voice.increment = static_cast<double>(sample.sampleRate) / hostSampleRate_ *
-                      std::pow(2.0, semitones);
+    initializeVoice(voice, note);
 }
 
 void ProgramVoicePool::noteOn(
@@ -200,6 +232,20 @@ void ProgramVoicePool::noteOff(
     std::int32_t channel, std::int32_t pitch, std::int32_t noteId) noexcept {
     if (channel < 0 || channel >= static_cast<std::int32_t>(midiChannelCount))
         return;
+    for (std::size_t output = 0; output < pendingMonophonicNotes_.size(); ++output) {
+        const auto& pending = pendingMonophonicNotes_[output];
+        if (!pending)
+            continue;
+        const auto& keygroup = program_.keygroups[pending->keygroupIndex];
+        const bool idMatches = noteId >= 0 ? pending->noteId == noteId
+                                           : pending->pitch == pitch;
+        if (pending->midiChannel == channel && idMatches && !keygroup.oneShot) {
+            pendingMonophonicNotes_[output].reset();
+            monophonicHandoverSamples_[output] = 0;
+            if (noteId >= 0)
+                break;
+        }
+    }
     for (auto& voice : voices_) {
         const bool idMatches = noteId >= 0 ? voice.noteId == noteId : voice.pitch == pitch;
         if (voice.active && voice.midiChannel == channel && idMatches && !voice.oneShot) {
@@ -382,6 +428,7 @@ void ProgramVoicePool::renderAdd(
     if (frameCount <= 0)
         return;
     for (std::int32_t frame = 0; frame < frameCount; ++frame) {
+        std::array<bool, 8> renderedMonophonicOutput {};
         for (auto& voice : voices_) {
             if (!voice.active)
                 continue;
@@ -390,10 +437,32 @@ void ProgramVoicePool::renderAdd(
                 outputs[0][frame] += value;
             switch (voice.output.kind()) {
                 case formats::P9OutputKind::mono: {
+                    const auto outputIndex = static_cast<std::size_t>(voice.output.raw);
+                    renderedMonophonicOutput[outputIndex] = true;
                     const std::size_t monoBus = static_cast<std::size_t>(voice.output.raw) + 1;
                     const std::size_t sideBus = voice.output.raw < 4 ? 9 : 10;
                     if (outputs[monoBus]) outputs[monoBus][frame] += value;
                     if (outputs[sideBus]) outputs[sideBus][frame] += value;
+                    if (pendingMonophonicNotes_[outputIndex]) {
+                        const float previous = previousMonophonicOutputs_[outputIndex];
+                        const bool nearZero = std::abs(value) <= monophonicHandoverNearZero;
+                        const bool crossed = (previous > 0.0F && value <= 0.0F) ||
+                                             (previous < 0.0F && value >= 0.0F);
+                        const auto maximumSamples = std::max<std::uint64_t>(
+                            1, static_cast<std::uint64_t>(
+                                   std::ceil(hostSampleRate_ *
+                                             monophonicHandoverMaximumSeconds)));
+                        const bool timedOut =
+                            ++monophonicHandoverSamples_[outputIndex] >= maximumSamples;
+                        // Temporary S950-emulation measure pending matched hardware
+                        // recordings: no crossfade is used, the replacement attack is
+                        // untouched, and old/new never overlap. The old sample at the
+                        // crossing (or 1.0 ms timeout) is emitted; the freshly initialized
+                        // replacement begins on the following output sample.
+                        if (nearZero || crossed || timedOut)
+                            completeMonophonicHandover(outputIndex, voice);
+                    }
+                    previousMonophonicOutputs_[outputIndex] = value;
                     break;
                 }
                 case formats::P9OutputKind::left:
@@ -405,6 +474,12 @@ void ProgramVoicePool::renderAdd(
                 case formats::P9OutputKind::all:
                 case formats::P9OutputKind::unknown:
                     break;
+            }
+        }
+        for (std::size_t output = 0; output < pendingMonophonicNotes_.size(); ++output) {
+            if (pendingMonophonicNotes_[output] && !renderedMonophonicOutput[output]) {
+                auto& voice = voiceForNewNote();
+                completeMonophonicHandover(output, voice);
             }
         }
     }
