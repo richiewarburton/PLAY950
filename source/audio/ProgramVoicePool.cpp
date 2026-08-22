@@ -77,6 +77,7 @@ void ProgramVoicePool::setProgram(PreparedProgram program) {
     program_ = std::move(program);
     for (auto& voice : voices_)
         voice = {};
+    retiringVoices_ = {};
     nextAge_ = 1;
 }
 
@@ -100,14 +101,6 @@ ProgramVoicePool::Voice& ProgramVoicePool::voiceForNewNote() noexcept {
 }
 
 void ProgramVoicePool::enforceOutputLimits(formats::P9Output output) noexcept {
-    if (output.kind() == formats::P9OutputKind::mono) {
-        for (auto& voice : voices_) {
-            if (voice.active && voice.output.kind() == formats::P9OutputKind::mono &&
-                voice.output.raw == output.raw)
-                voice.active = false;
-        }
-    }
-
     const int side = sideFor(output);
     if (side < 0)
         return;
@@ -122,6 +115,64 @@ void ProgramVoicePool::enforceOutputLimits(formats::P9Output output) noexcept {
     }
     if (count >= 4 && oldest)
         oldest->active = false;
+}
+
+void ProgramVoicePool::initializeVoice(Voice& voice, const PendingNote& note) noexcept {
+    const auto& sample = program_.samples[note.sampleIndex];
+    const auto& keygroup = program_.keygroups[note.keygroupIndex];
+    voice = {};
+    voice.active = true;
+    voice.midiChannel = note.midiChannel;
+    voice.pitch = note.pitch;
+    voice.noteId = note.noteId;
+    voice.gain = 1.0F;
+    voice.playbackDirection = sample.direction == formats::S9Direction::reverse ? -1 : 1;
+    voice.position = voice.playbackDirection > 0
+                         ? static_cast<double>(sample.playbackStart)
+                         : static_cast<double>(sample.playbackEnd - 1);
+    voice.sampleIndex = note.sampleIndex;
+    voice.keygroupIndex = note.keygroupIndex;
+    voice.output = keygroup.output;
+    voice.oneShot = keygroup.oneShot;
+    voice.velocity = note.velocity;
+    voice.baseFilter = static_cast<float>(note.useLoudLayer ? keygroup.loudFilter
+                                                            : keygroup.softFilter);
+    const auto loudness = note.useLoudLayer ? keygroup.loudLoudness : keygroup.softLoudness;
+    voice.loudnessGain = loudnessGain(sample.loudnessOffset, loudness,
+                                      keygroup.velocityToLoudness, voice.velocity);
+    voice.amplitude = {keygroup.amplitudeEnvelope,
+                       EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
+    voice.filter = {keygroup.filterEnvelope,
+                    EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
+    voice.age = nextAge_++;
+    const double pitchSixteenths = keygroup.constantPitch
+        ? static_cast<double>(sample.nominalPitchSixteenths) + note.tuningSixteenths
+        : static_cast<double>(note.pitch * 16) + note.tuningSixteenths;
+    const double semitones =
+        (pitchSixteenths - sample.nominalPitchSixteenths) / 192.0;
+    voice.increment = static_cast<double>(sample.sampleRate) / hostSampleRate_ *
+                      std::pow(2.0, semitones);
+}
+
+void ProgramVoicePool::retireVoice(const Voice& voice, double seconds) noexcept {
+    auto slot = std::find_if(retiringVoices_.begin(), retiringVoices_.end(),
+                             [](const RetiringVoice& retiring) {
+                                 return retiring.samplesRemaining == 0;
+                             });
+    if (slot == retiringVoices_.end()) {
+        // Eight retriggers inside 2.5 ms already exceed the audible use case;
+        // if that happens, replace the tail nearest silence.
+        slot = std::min_element(retiringVoices_.begin(), retiringVoices_.end(),
+                                [](const RetiringVoice& a, const RetiringVoice& b) {
+                                    return a.samplesRemaining < b.samplesRemaining;
+                                });
+    }
+    auto& retiring = *slot;
+    retiring.voice = voice;
+    retiring.totalSamples = std::max<std::uint64_t>(
+        1, static_cast<std::uint64_t>(
+               std::llround(hostSampleRate_ * seconds)));
+    retiring.samplesRemaining = retiring.totalSamples;
 }
 
 void ProgramVoicePool::noteOn(
@@ -155,40 +206,30 @@ void ProgramVoicePool::noteOn(
         sample.playbackEnd <= sample.playbackStart)
         return;
 
+    const PendingNote note {
+        channel, pitch, noteId, static_cast<float>(midiVelocity) / 127.0F,
+        *sampleIndex, static_cast<std::size_t>(keygroup - program_.keygroups.begin()),
+        tuning, useLoudLayer};
+    if (keygroup->output.kind() == formats::P9OutputKind::mono &&
+        keygroup->output.raw < retiringVoices_.size()) {
+        auto occupied = std::find_if(voices_.begin(), voices_.end(),
+                                     [&](const Voice& voice) {
+            return voice.active && voice.output.kind() == formats::P9OutputKind::mono &&
+                   voice.output.raw == keygroup->output.raw;
+        });
+        if (occupied != voices_.end()) {
+            // Start the replacement exactly on the note event.  The displaced
+            // post-filter voice is kept in fixed storage and ramps to silence,
+            // avoiding both a hard waveform discontinuity and audio-thread allocation.
+            retireVoice(*occupied, monophonicRetirementSeconds);
+            initializeVoice(*occupied, note);
+            return;
+        }
+    }
+
     enforceOutputLimits(keygroup->output);
     auto& voice = voiceForNewNote();
-    voice.active = true;
-    voice.midiChannel = channel;
-    voice.pitch = pitch;
-    voice.noteId = noteId;
-    voice.gain = 1.0F;
-    voice.playbackDirection = sample.direction == formats::S9Direction::reverse ? -1 : 1;
-    voice.position = voice.playbackDirection > 0
-                         ? static_cast<double>(sample.playbackStart)
-                         : static_cast<double>(sample.playbackEnd - 1);
-    voice.sampleIndex = *sampleIndex;
-    voice.keygroupIndex = static_cast<std::size_t>(keygroup - program_.keygroups.begin());
-    voice.output = keygroup->output;
-    voice.oneShot = keygroup->oneShot;
-    voice.velocity = static_cast<float>(midiVelocity) / 127.0F;
-    voice.baseFilter = static_cast<float>(useLoudLayer ? keygroup->loudFilter
-                                                       : keygroup->softFilter);
-    const auto loudness = useLoudLayer ? keygroup->loudLoudness : keygroup->softLoudness;
-    voice.loudnessGain = loudnessGain(sample.loudnessOffset, loudness,
-                                      keygroup->velocityToLoudness, voice.velocity);
-    voice.amplitude = {keygroup->amplitudeEnvelope,
-                       EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
-    voice.filter = {keygroup->filterEnvelope,
-                    EnvelopeState::Stage::attack, 0.0F, 0.0F, 0};
-    voice.filterState = {};
-    voice.age = nextAge_++;
-    const double pitchSixteenths = keygroup->constantPitch
-        ? static_cast<double>(sample.nominalPitchSixteenths) + tuning
-        : static_cast<double>(pitch * 16) + tuning;
-    const double semitones =
-        (pitchSixteenths - sample.nominalPitchSixteenths) / 192.0;
-    voice.increment = static_cast<double>(sample.sampleRate) / hostSampleRate_ *
-                      std::pow(2.0, semitones);
+    initializeVoice(voice, note);
 }
 
 void ProgramVoicePool::noteOn(
@@ -204,6 +245,7 @@ void ProgramVoicePool::noteOff(
         const bool idMatches = noteId >= 0 ? voice.noteId == noteId : voice.pitch == pitch;
         if (voice.active && voice.midiChannel == channel && idMatches && !voice.oneShot) {
             if (voice.amplitude.parameters.release == 0) {
+                retireVoice(voice, zeroReleaseRetirementSeconds);
                 voice.active = false;
                 if (noteId >= 0)
                     return;
@@ -382,31 +424,48 @@ void ProgramVoicePool::renderAdd(
     if (frameCount <= 0)
         return;
     for (std::int32_t frame = 0; frame < frameCount; ++frame) {
+        for (auto& retiring : retiringVoices_) {
+            if (retiring.samplesRemaining == 0 || !retiring.voice.active)
+                continue;
+            const float value = nextSample(retiring.voice);
+            const float position = static_cast<float>(retiring.samplesRemaining) /
+                                   static_cast<float>(retiring.totalSamples);
+            const float gain = 0.5F - 0.5F *
+                std::cos(static_cast<float>(std::numbers::pi) * position);
+            addToOutput(outputs, frame, retiring.voice, value * gain);
+            if (--retiring.samplesRemaining == 0)
+                retiring.voice.active = false;
+        }
         for (auto& voice : voices_) {
             if (!voice.active)
                 continue;
             const float value = nextSample(voice);
-            if (outputs[0])
-                outputs[0][frame] += value;
-            switch (voice.output.kind()) {
-                case formats::P9OutputKind::mono: {
-                    const std::size_t monoBus = static_cast<std::size_t>(voice.output.raw) + 1;
-                    const std::size_t sideBus = voice.output.raw < 4 ? 9 : 10;
-                    if (outputs[monoBus]) outputs[monoBus][frame] += value;
-                    if (outputs[sideBus]) outputs[sideBus][frame] += value;
-                    break;
-                }
-                case formats::P9OutputKind::left:
-                    if (outputs[9]) outputs[9][frame] += value;
-                    break;
-                case formats::P9OutputKind::right:
-                    if (outputs[10]) outputs[10][frame] += value;
-                    break;
-                case formats::P9OutputKind::all:
-                case formats::P9OutputKind::unknown:
-                    break;
-            }
+            addToOutput(outputs, frame, voice, value);
         }
+    }
+}
+
+void ProgramVoicePool::addToOutput(const OutputBuffers& outputs, std::int32_t frame,
+                                   const Voice& voice, float value) const noexcept {
+    if (outputs[0])
+        outputs[0][frame] += value;
+    switch (voice.output.kind()) {
+        case formats::P9OutputKind::mono: {
+            const std::size_t monoBus = static_cast<std::size_t>(voice.output.raw) + 1;
+            const std::size_t sideBus = voice.output.raw < 4 ? 9 : 10;
+            if (outputs[monoBus]) outputs[monoBus][frame] += value;
+            if (outputs[sideBus]) outputs[sideBus][frame] += value;
+            break;
+        }
+        case formats::P9OutputKind::left:
+            if (outputs[9]) outputs[9][frame] += value;
+            break;
+        case formats::P9OutputKind::right:
+            if (outputs[10]) outputs[10][frame] += value;
+            break;
+        case formats::P9OutputKind::all:
+        case formats::P9OutputKind::unknown:
+            break;
     }
 }
 

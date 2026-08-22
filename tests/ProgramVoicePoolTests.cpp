@@ -134,7 +134,7 @@ int main() {
         pool.noteOn(60, 101, 1.0F);
         require(pool.activeVoiceCount() == 1, "mono output accepted two voices");
         require(!pool.isNoteActive(60, 100) && pool.isNoteActive(60, 101),
-                "mono output did not replace its existing voice");
+                "mono replacement did not start immediately");
 
         pool.noteOn(61, 102, 1.0F);
         pool.noteOn(62, 103, 1.0F);
@@ -146,6 +146,104 @@ int main() {
 
         pool.noteOn(65, 106, 1.0F);
         require(pool.activeVoiceCount() == 5, "Right group incorrectly reduced Left polyphony");
+
+        auto handoverProgram = [] {
+            audio::PreparedProgram result;
+            auto oldSample = loopingRamp();
+            oldSample.samples12 = {1024, 512, 0, -1024};
+            oldSample.nominalPitchSixteenths = 80 * 16;
+            oldSample.playbackEnd = oldSample.samples12.size();
+            result.samples.push_back(oldSample);
+            auto replacement = oldSample;
+            replacement.samples12 = {1536, 1024, 512, 256};
+            replacement.nominalPitchSixteenths = 81 * 16;
+            result.samples.push_back(replacement);
+            auto newest = oldSample;
+            newest.samples12 = {256, 256, 256, 256};
+            newest.nominalPitchSixteenths = 82 * 16;
+            result.samples.push_back(newest);
+            auto oldKeygroup = keygroup(80, 0);
+            auto replacementKeygroup = keygroup(81, 0);
+            replacementKeygroup.softSampleIndex = 1;
+            auto newestKeygroup = keygroup(82, 0);
+            newestKeygroup.softSampleIndex = 2;
+            result.keygroups = {oldKeygroup, replacementKeygroup, newestKeygroup};
+            return result;
+        };
+
+        audio::ProgramVoicePool freshReplacementPool;
+        freshReplacementPool.setProgram(handoverProgram());
+        freshReplacementPool.setHostSampleRate(48'000.0);
+        freshReplacementPool.noteOn(81, 401, 1.0F);
+        std::array<std::array<float, 128>, audio::ProgramVoicePool::outputCount>
+            freshStorage {};
+        audio::ProgramVoicePool::OutputBuffers freshOutputs {};
+        for (std::size_t bus = 0; bus < freshOutputs.size(); ++bus)
+            freshOutputs[bus] = freshStorage[bus].data();
+        freshReplacementPool.renderAdd(freshOutputs, 121);
+
+        audio::ProgramVoicePool handoverPool;
+        handoverPool.setProgram(handoverProgram());
+        handoverPool.setHostSampleRate(48'000.0);
+        handoverPool.noteOn(80, 400, 1.0F);
+        std::array<std::array<float, 128>, audio::ProgramVoicePool::outputCount>
+            handoverStorage {};
+        audio::ProgramVoicePool::OutputBuffers handoverOutputs {};
+        for (std::size_t bus = 0; bus < handoverOutputs.size(); ++bus)
+            handoverOutputs[bus] = handoverStorage[bus].data();
+        handoverPool.renderAdd(handoverOutputs, 1);
+        handoverPool.noteOn(81, 401, 1.0F);
+        require(!handoverPool.isNoteActive(80, 400) &&
+                    handoverPool.isNoteActive(81, 401),
+                "individual-output replacement did not start immediately");
+        handoverStorage = {};
+        handoverPool.renderAdd(handoverOutputs, 121);
+        require(std::abs((handoverStorage[0][0] - freshStorage[0][0]) - 0.25F) <
+                    0.0001F,
+                "retiring voice was not summed with the untouched replacement attack");
+        require(std::abs(handoverStorage[0][120] - freshStorage[0][120]) < 0.0001F,
+                "2.5 ms retiring voice was not silent after 120 samples at 48 kHz");
+        require(handoverPool.activeVoiceCount() == 1,
+                "retiring storage changed the logical monophonic voice count");
+
+        audio::ProgramVoicePool priorityPool;
+        priorityPool.setProgram(handoverProgram());
+        priorityPool.setHostSampleRate(48'000.0);
+        priorityPool.noteOn(80, 410, 1.0F);
+        freshStorage = {};
+        priorityPool.renderAdd(freshOutputs, 1);
+        priorityPool.noteOn(81, 411, 1.0F);
+        priorityPool.noteOn(82, 412, 1.0F);
+        require(priorityPool.isNoteActive(82, 412) &&
+                    !priorityPool.isNoteActive(81, 411),
+                "newest note did not immediately win monophonic output");
+
+        audio::ProgramVoicePool cancelledPool;
+        cancelledPool.setProgram(handoverProgram());
+        cancelledPool.setHostSampleRate(48'000.0);
+        cancelledPool.noteOn(80, 420, 1.0F);
+        freshStorage = {};
+        cancelledPool.renderAdd(freshOutputs, 1);
+        cancelledPool.noteOn(81, 421, 1.0F);
+        cancelledPool.noteOff(81, 421);
+        require(!cancelledPool.isNoteActive(80, 420) &&
+                    !cancelledPool.isNoteActive(81, 421),
+                "note-off did not stop the active replacement note");
+
+        auto oneShotProgram = handoverProgram();
+        oneShotProgram.keygroups[1].oneShot = true;
+        audio::ProgramVoicePool oneShotPendingPool;
+        oneShotPendingPool.setProgram(std::move(oneShotProgram));
+        oneShotPendingPool.setHostSampleRate(48'000.0);
+        oneShotPendingPool.noteOn(80, 430, 1.0F);
+        freshStorage = {};
+        oneShotPendingPool.renderAdd(freshOutputs, 1);
+        oneShotPendingPool.noteOn(81, 431, 1.0F);
+        oneShotPendingPool.noteOff(81, 431);
+        freshStorage = {};
+        oneShotPendingPool.renderAdd(freshOutputs, 4);
+        require(oneShotPendingPool.isNoteActive(81, 431),
+                "note-off incorrectly cancelled a replacement One Shot note");
 
         audio::ProgramVoicePool layerPool;
         audio::PreparedProgram layerProgram;
@@ -172,6 +270,10 @@ int main() {
         require(std::abs(storage[0][1] - 0.125F) < 0.0001F,
                 "Soft layer selection or velocity-independent gain failed");
         layerPool.noteOff(66, 107);
+        for (int block = 0; block < 240; ++block) {
+            storage = {};
+            layerPool.renderAdd(outputs, 2);
+        }
         layerPool.noteOn(66, 108, 1.0F);
         storage = {};
         layerPool.renderAdd(outputs, 2);
@@ -373,6 +475,36 @@ int main() {
         envelopePool.renderAdd(envelopeOutputs, 1000);
         require(envelopePool.activeVoiceCount() == 0,
                 "amplitude release did not finish and retire its voice");
+
+        audio::PreparedProgram zeroReleaseProgram;
+        auto zeroReleaseSignal = loopingRamp();
+        zeroReleaseSignal.samples12.assign(32, 1024);
+        zeroReleaseSignal.playbackEnd = zeroReleaseSignal.samples12.size();
+        zeroReleaseProgram.samples.push_back(std::move(zeroReleaseSignal));
+        auto zeroReleaseKeygroup = keygroup(61, 0);
+        zeroReleaseKeygroup.softFilter = 99;
+        zeroReleaseKeygroup.amplitudeEnvelope = {0, 0, 99, 0};
+        zeroReleaseProgram.keygroups.push_back(zeroReleaseKeygroup);
+        audio::ProgramVoicePool zeroReleasePool;
+        zeroReleasePool.setProgram(std::move(zeroReleaseProgram));
+        zeroReleasePool.setHostSampleRate(1'000.0);
+        zeroReleasePool.noteOn(61, 202, 1.0F);
+        std::array<std::array<float, 12>, audio::ProgramVoicePool::outputCount>
+            zeroReleaseStorage {};
+        audio::ProgramVoicePool::OutputBuffers zeroReleaseOutputs {};
+        for (std::size_t bus = 0; bus < zeroReleaseOutputs.size(); ++bus)
+            zeroReleaseOutputs[bus] = zeroReleaseStorage[bus].data();
+        zeroReleasePool.renderAdd(zeroReleaseOutputs, 1);
+        zeroReleaseStorage = {};
+        zeroReleasePool.noteOff(61, 202);
+        require(zeroReleasePool.activeVoiceCount() == 0,
+                "zero-release note remained logically active");
+        zeroReleasePool.renderAdd(zeroReleaseOutputs, 11);
+        require(std::abs(zeroReleaseStorage[0][0] - 0.5F) < 0.0001F &&
+                    std::abs(zeroReleaseStorage[0][5] - 0.25F) < 0.0001F &&
+                    std::abs(zeroReleaseStorage[0][9]) < 0.02F &&
+                    std::abs(zeroReleaseStorage[0][10]) < 0.0001F,
+                "zero release did not use a 10 ms smooth post-filter retirement");
 
         std::cout << "PLAY950 program voice-pool tests passed\n";
         return 0;

@@ -1,8 +1,8 @@
 # PLAY950 project status
 
-Last updated: 16 August 2026
+Last updated: 22 August 2026
 
-PLAY950 0.13.3 is the current public macOS VST3 community release. The packaged
+PLAY950 0.13.4 is the current public macOS VST3 community release. The packaged
 plug-in is Universal and ad-hoc signed; it is not Developer ID signed or
 notarized.
 

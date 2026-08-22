@@ -46,7 +46,7 @@ content with the DAW project.*
 
 ## Current availability
 
-PLAY950 **0.13.3** is the current
+PLAY950 **0.13.4** is the current
 [public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest)
 for macOS 14 or later. Acceptance uses Ableton Live 12 and Steinberg's VST3
 editor host and validator, although PLAY950 is designed around standard VST3
@@ -77,7 +77,7 @@ and troubleshooting, see the [PLAY950 musician's guide](docs/USER_GUIDE.md).
 7. Use **Open in EDIT950** when you want to alter the image or program; PLAY950
    itself remains a read-only player.
 
-The 0.13.3 editor uses larger type throughout. Its **Theme** menu defaults to
+The 0.13.3-and-later editor uses larger type throughout. Its **Theme** menu defaults to
 the macOS System appearance, with explicit Light and Dark choices when a fixed
 plug-in appearance is preferable in the DAW.
 
