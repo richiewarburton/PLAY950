@@ -77,6 +77,27 @@ bool writeStateStream(Steinberg::IBStream* stream, std::span<const std::byte> by
     return true;
 }
 
+std::vector<audio::PreparedKeygroup> prepareKeygroups(
+    const formats::P9Program& program,
+    std::span<const formats::P9ResolvedKeygroup> resolved) {
+    std::vector<audio::PreparedKeygroup> keygroups;
+    keygroups.reserve(program.keygroups.size());
+    for (std::size_t index = 0; index < program.keygroups.size(); ++index) {
+        const auto& source = program.keygroups[index];
+        keygroups.push_back({
+            source.lowKey, source.highKey, resolved[index].softSampleIndex,
+            resolved[index].loudSampleIndex, source.velocityThreshold,
+            source.softTuning.rawSixteenths, source.loudTuning.rawSixteenths,
+            source.output, source.oneShot, source.constantPitch,
+            source.amplitudeEnvelope, source.vcfEnvelope, source.vcfAmount,
+            source.velocityToLoudness, source.velocityToFilter,
+            source.keyboardToFilter, source.softFilter, source.loudFilter,
+            source.softLoudness, source.loudLoudness,
+            source.midiChannelOffset});
+    }
+    return keygroups;
+}
+
 } // namespace
 
 Processor::Processor() {
@@ -165,39 +186,72 @@ std::unique_ptr<Processor::LoadedProgram> Processor::prepareProjectState(
     const auto resolved = formats::resolveP9Samples(program, parsedSamples);
     audio::PreparedProgram prepared;
     prepared.samples.reserve(parsedSamples.size());
-    for (auto& sample : parsedSamples)
+    loaded->sampleMetadata.reserve(parsedSamples.size());
+    for (auto& sample : parsedSamples) {
+        auto sampleFrames = std::move(sample.samples12);
+        loaded->sampleMetadata.push_back(sample);
+        sample.samples12 = std::move(sampleFrames);
         prepared.samples.push_back(audio::prepareSample(std::move(sample)));
-    prepared.keygroups.reserve(program.keygroups.size());
-    for (std::size_t index = 0; index < program.keygroups.size(); ++index) {
-        const auto& source = program.keygroups[index];
-        prepared.keygroups.push_back({
-            source.lowKey, source.highKey, resolved[index].softSampleIndex,
-            resolved[index].loudSampleIndex, source.velocityThreshold,
-            source.softTuning.rawSixteenths, source.loudTuning.rawSixteenths,
-            source.output, source.oneShot, source.constantPitch,
-            source.amplitudeEnvelope, source.vcfEnvelope, source.vcfAmount,
-            source.velocityToLoudness, source.velocityToFilter,
-            source.keyboardToFilter,
-            source.softFilter, source.loudFilter,
-            source.softLoudness, source.loudLoudness,
-            source.midiChannelOffset});
     }
+    prepared.keygroups = prepareKeygroups(program, resolved);
     loaded->voices.setProgram(std::move(prepared));
     loaded->voices.setMidiReception(projectState.midiOmni,
                                     static_cast<int>(projectState.basicMidiChannel));
-    loaded->state = std::move(projectState);
+    loaded->p9 = projectState.p9;
+    loaded->baseState = std::make_shared<const state::ProjectState>(
+        std::move(projectState));
     return loaded;
 }
 
 bool Processor::queueProjectState(state::ProjectState projectState) {
     try {
-        auto loaded = prepareProjectState(std::move(projectState));
-        pitchBendRangeSemitones_.store(
-            static_cast<int>(loaded->state.pitchBendRangeSemitones),
-            std::memory_order_relaxed);
-        midiOmni_.store(loaded->state.midiOmni, std::memory_order_relaxed);
-        basicMidiChannel_.store(
-            static_cast<int>(loaded->state.basicMidiChannel), std::memory_order_relaxed);
+        return queueLoadedProgram(prepareProjectState(std::move(projectState)));
+    } catch (...) {
+        return false;
+    }
+}
+
+bool Processor::queueProgramUpdate(std::vector<std::byte> p9Data) {
+    try {
+        auto* current = pendingProgram_.load(std::memory_order_acquire);
+        if (!current)
+            current = activeProgram_.load(std::memory_order_acquire);
+        if (!current || !current->baseState)
+            return false;
+        const auto program = formats::parseP9(p9Data);
+        const auto resolved = formats::resolveP9Samples(
+            program, current->sampleMetadata);
+        auto loaded = std::make_unique<LoadedProgram>();
+        loaded->baseState = current->baseState;
+        loaded->p9 = std::move(p9Data);
+        loaded->sampleMetadata = current->sampleMetadata;
+        loaded->voices.setProgram(
+            current->voices.preparedSamples(),
+            prepareKeygroups(program, resolved));
+        loaded->voices.setMidiReception(
+            midiOmni_.load(std::memory_order_relaxed),
+            basicMidiChannel_.load(std::memory_order_relaxed));
+        return queueLoadedProgram(std::move(loaded), false);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool Processor::queueLoadedProgram(
+    std::unique_ptr<LoadedProgram> loaded,
+    bool adoptStoredSettings) {
+    try {
+        if (!loaded || !loaded->baseState)
+            return false;
+        if (adoptStoredSettings) {
+            pitchBendRangeSemitones_.store(
+                static_cast<int>(loaded->baseState->pitchBendRangeSemitones),
+                std::memory_order_relaxed);
+            midiOmni_.store(loaded->baseState->midiOmni, std::memory_order_relaxed);
+            basicMidiChannel_.store(
+                static_cast<int>(loaded->baseState->basicMidiChannel),
+                std::memory_order_relaxed);
+        }
         if (auto* retired = retiredProgram_.exchange(nullptr, std::memory_order_acq_rel))
             delete retired;
         // A stopped or newly created host track may not call process() between
@@ -276,7 +330,10 @@ Steinberg::tresult PLUGIN_API Processor::getState(Steinberg::IBStream* stream) {
         auto* loaded = pendingProgram_.load(std::memory_order_acquire);
         if (!loaded)
             loaded = activeProgram_.load(std::memory_order_acquire);
-        auto currentState = loaded ? loaded->state : state::ProjectState {};
+        auto currentState = loaded && loaded->baseState
+            ? *loaded->baseState : state::ProjectState {};
+        if (loaded)
+            currentState.p9 = loaded->p9;
         currentState.pitchBendRangeSemitones = static_cast<std::uint32_t>(
             pitchBendRangeSemitones_.load(std::memory_order_relaxed));
         currentState.midiOmni = midiOmni_.load(std::memory_order_relaxed);
@@ -290,20 +347,31 @@ Steinberg::tresult PLUGIN_API Processor::getState(Steinberg::IBStream* stream) {
 }
 
 Steinberg::tresult PLUGIN_API Processor::notify(Steinberg::Vst::IMessage* message) {
-    if (!message || !Steinberg::FIDStringsEqual(message->getMessageID(), loadProjectStateMessage))
+    if (!message)
+        return AudioEffect::notify(message);
+    const bool isProjectState = Steinberg::FIDStringsEqual(
+        message->getMessageID(), loadProjectStateMessage);
+    const bool isProgramUpdate = Steinberg::FIDStringsEqual(
+        message->getMessageID(), updateProgramMessage);
+    if (!isProjectState && !isProgramUpdate)
         return AudioEffect::notify(message);
     const void* data = nullptr;
     Steinberg::uint32 size = 0;
     if (!message->getAttributes() ||
-        message->getAttributes()->getBinary(projectStateAttribute, data, size) !=
+        message->getAttributes()->getBinary(
+            isProjectState ? projectStateAttribute : programDataAttribute,
+            data,
+            size) !=
             Steinberg::kResultOk ||
         !data)
         return Steinberg::kInvalidArgument;
     try {
         const auto bytes = std::span(static_cast<const std::byte*>(data),
                                      static_cast<std::size_t>(size));
-        return queueProjectState(state::deserializeProjectState(bytes)) ? Steinberg::kResultOk
-                                                                        : Steinberg::kResultFalse;
+        const bool queued = isProjectState
+            ? queueProjectState(state::deserializeProjectState(bytes))
+            : queueProgramUpdate(std::vector<std::byte>(bytes.begin(), bytes.end()));
+        return queued ? Steinberg::kResultOk : Steinberg::kResultFalse;
     } catch (...) {
         return Steinberg::kResultFalse;
     }

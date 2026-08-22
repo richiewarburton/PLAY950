@@ -35,7 +35,9 @@ public:
 private:
     struct LoadedProgram {
         audio::ProgramVoicePool voices;
-        state::ProjectState state;
+        std::shared_ptr<const state::ProjectState> baseState;
+        std::vector<std::byte> p9;
+        std::vector<formats::S9Sample> sampleMetadata;
     };
     static_assert(std::atomic<LoadedProgram*>::is_always_lock_free);
 
@@ -45,6 +47,10 @@ private:
     [[nodiscard]] std::unique_ptr<LoadedProgram> prepareProjectState(
         state::ProjectState projectState) const;
     bool queueProjectState(state::ProjectState projectState);
+    bool queueProgramUpdate(std::vector<std::byte> p9Data);
+    bool queueLoadedProgram(
+        std::unique_ptr<LoadedProgram> loaded,
+        bool adoptStoredSettings = true);
     [[nodiscard]] LoadedProgram* adoptPendingProgram(bool& adopted) noexcept;
     void clearPrograms() noexcept;
 

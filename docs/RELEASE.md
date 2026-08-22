@@ -2,7 +2,7 @@
 
 ## Supported package
 
-PLAY950 0.13.4 targets macOS 14 or later and Ableton Live 12. The VST3 binary is
+PLAY950 0.13.5 targets macOS 14 or later and Ableton Live 12. The VST3 binary is
 Universal (`arm64` and `x86_64`). IMG extraction uses the bundled Universal AKAI
 Util 4.6.7 helper and does not require Rosetta. Direct P9 loading does not invoke
 AKAI Util.
@@ -69,14 +69,19 @@ Test the exact ZIP on a Mac that has never used the development tree:
 1. Run native Apple Silicon Live without Rosetta.
 2. Copy `PLAY950.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
 3. Reboot or force Live to rescan VST3 plug-ins.
-4. Confirm version 0.13.4, confirm that the host exposes no audio input bus, and
+4. Confirm version 0.13.5, confirm that the host exposes no audio input bus, and
    load a P9 with linked S9 files.
-5. Load a multi-program IMG and verify selection, Reload IMG and recent images.
+5. Load a multi-program IMG and verify selection, Reload Source and recent images.
 6. Verify the editor starts in System theme, follows macOS light/dark appearance,
    and can be held explicitly in Light or Dark from the Theme menu.
 7. Save a Set, remove the source, and verify embedded recall.
-8. Install EDIT950 and verify Open in EDIT950; without it, playback and
-   loading must remain functional and the button must report that it is absent.
+8. Install EDIT950 and verify Open in EDIT950 opens the exact selected P9.
+   Change a keygroup without saving and confirm this PLAY950 instance auditions
+   it within 100 ms while the IMG checksum remains unchanged. Close the PLAY950
+   editor and confirm EDIT950 reports disconnection. Save the P9, close EDIT950,
+   use Reload Source and confirm a later editing session starts from that saved
+   baseline. Without EDIT950, playback and loading must remain functional and
+   the button must report that it is absent.
 9. Repeat on native Apple Silicon Live and an Intel or Rosetta-hosted Live.
 
 ## Native development-machine smoke test
@@ -90,5 +95,5 @@ before recall to confirm that the Set carried everything needed for playback.
 
 The packaged ZIP also passed on a separate Apple-silicon Mac. Ableton Live ran
 natively; the bundled helper reported `x86_64 arm64`. Native IMG loading,
-multi-program discovery, Reload IMG with selection retention and saved-Set
+multi-program discovery, Reload Source with selection retention and saved-Set
 recall all passed without Rosetta.

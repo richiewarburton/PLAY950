@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -45,8 +46,15 @@ public:
     static constexpr std::size_t outputCount = 11;
     static constexpr std::size_t midiChannelCount = 16;
     using OutputBuffers = std::array<float*, outputCount>;
+    using PreparedSamples = std::shared_ptr<const std::vector<PreparedSample>>;
 
     void setProgram(PreparedProgram program);
+    void setProgram(
+        PreparedSamples samples,
+        std::vector<PreparedKeygroup> keygroups);
+    [[nodiscard]] PreparedSamples preparedSamples() const noexcept {
+        return samples_;
+    }
     void setHostSampleRate(double sampleRate) noexcept;
     void setMidiReception(bool omni, int basicMidiChannel) noexcept;
     void noteOn(std::int32_t channel, std::int32_t pitch, std::int32_t noteId,
@@ -125,7 +133,9 @@ private:
     float nextSample(Voice& voice) noexcept;
     float advanceEnvelope(EnvelopeState& envelope) const noexcept;
 
-    PreparedProgram program_;
+    PreparedSamples samples_ {
+        std::make_shared<const std::vector<PreparedSample>>()};
+    std::vector<PreparedKeygroup> keygroups_;
     std::array<Voice, voiceCount> voices_ {};
     std::array<RetiringVoice, 8> retiringVoices_ {};
     double hostSampleRate_ {44'100.0};

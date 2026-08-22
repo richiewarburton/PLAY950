@@ -7,6 +7,7 @@
 #include "state/ProjectState.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,6 +39,22 @@ public:
     [[nodiscard]] std::size_t programCount() const noexcept { return programs_.size(); }
     [[nodiscard]] std::size_t selectedProgramIndex() const noexcept { return selectedProgram_; }
     [[nodiscard]] std::string programDisplayName(std::size_t index) const;
+    [[nodiscard]] bool currentProgramForEditing(
+        std::string& fileName,
+        std::vector<std::byte>& p9Data,
+        std::vector<std::byte>& baselineP9Data) const;
+    [[nodiscard]] const std::string& liveEditSessionIdentifier() const noexcept {
+        return liveEditSessionIdentifier_;
+    }
+    [[nodiscard]] bool hasActiveLiveEditSession() const noexcept {
+        return !liveEditSessionIdentifier_.empty()
+            && !liveEditProgramFilename_.empty();
+    }
+    void beginLiveEditSession(std::string identifier);
+    [[nodiscard]] std::uint64_t liveEditRevision() const noexcept {
+        return liveEditRevision_;
+    }
+    bool applyEditorProgram(std::vector<std::byte> p9Data, std::uint64_t revision);
     [[nodiscard]] const std::string& statusText() const noexcept { return statusText_; }
     [[nodiscard]] const std::string& sourcePath() const noexcept { return sourcePath_; }
     [[nodiscard]] int pitchBendRangeSemitones() noexcept;
@@ -50,6 +67,9 @@ public:
 private:
     [[nodiscard]] state::ProjectState projectStateForSelection(std::size_t index);
     bool sendProjectState(const state::ProjectState& projectState, std::string statusText);
+    bool sendProgramUpdate(
+        const std::vector<std::byte>& p9Data,
+        std::string statusText);
     [[nodiscard]] std::string selectionStatus(std::size_t index) const;
     [[nodiscard]] std::string restoredStatus(std::size_t index) const;
 
@@ -57,6 +77,10 @@ private:
     std::string sourceName_;
     std::string sourcePath_;
     std::size_t selectedProgram_ {0};
+    std::string liveEditSessionIdentifier_;
+    std::string liveEditProgramFilename_;
+    std::vector<std::byte> liveEditBaselineP9_;
+    std::uint64_t liveEditRevision_ {0};
     bool restoredFromHostState_ {false};
     std::string statusText_ {"No program loaded."};
 };

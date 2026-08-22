@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -32,6 +33,28 @@ audio::PreparedKeygroup keygroup(int note, std::uint8_t output, std::int16_t tun
 
 int main() {
     try {
+        audio::ProgramVoicePool liveEditPool;
+        audio::PreparedProgram liveEditProgram;
+        auto largeSample = loopingRamp();
+        largeSample.samples12.assign(1'000'000, 512);
+        largeSample.playbackEnd = largeSample.samples12.size();
+        liveEditProgram.samples.push_back(std::move(largeSample));
+        liveEditProgram.keygroups.push_back(keygroup(60, 0));
+        liveEditPool.setProgram(std::move(liveEditProgram));
+        const auto sharedSamples = liveEditPool.preparedSamples();
+        std::vector<audio::PreparedKeygroup> liveEditKeygroups;
+        liveEditKeygroups.reserve(99);
+        for (int index = 0; index < 99; ++index)
+            liveEditKeygroups.push_back(keygroup(20 + index, 0));
+        const auto liveEditStart = std::chrono::steady_clock::now();
+        liveEditPool.setProgram(sharedSamples, std::move(liveEditKeygroups));
+        const auto liveEditElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - liveEditStart);
+        require(liveEditPool.preparedSamples().get() == sharedSamples.get(),
+                "live edit copied the prepared sample collection");
+        require(liveEditElapsed.count() < 100,
+                "live edit keygroup update exceeded 100 ms");
+
         audio::ProgramVoicePool pool;
         audio::PreparedProgram program;
         program.samples.push_back(loopingRamp());

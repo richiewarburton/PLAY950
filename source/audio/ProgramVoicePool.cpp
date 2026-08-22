@@ -74,7 +74,18 @@ float loudnessGain(int sampleOffset, int layerOffset, std::uint8_t sensitivity,
 } // namespace
 
 void ProgramVoicePool::setProgram(PreparedProgram program) {
-    program_ = std::move(program);
+    setProgram(
+        std::make_shared<const std::vector<PreparedSample>>(
+            std::move(program.samples)),
+        std::move(program.keygroups));
+}
+
+void ProgramVoicePool::setProgram(
+    PreparedSamples samples,
+    std::vector<PreparedKeygroup> keygroups) {
+    samples_ = samples ? std::move(samples)
+                       : std::make_shared<const std::vector<PreparedSample>>();
+    keygroups_ = std::move(keygroups);
     for (auto& voice : voices_)
         voice = {};
     retiringVoices_ = {};
@@ -118,8 +129,8 @@ void ProgramVoicePool::enforceOutputLimits(formats::P9Output output) noexcept {
 }
 
 void ProgramVoicePool::initializeVoice(Voice& voice, const PendingNote& note) noexcept {
-    const auto& sample = program_.samples[note.sampleIndex];
-    const auto& keygroup = program_.keygroups[note.keygroupIndex];
+    const auto& sample = (*samples_)[note.sampleIndex];
+    const auto& keygroup = keygroups_[note.keygroupIndex];
     voice = {};
     voice.active = true;
     voice.midiChannel = note.midiChannel;
@@ -180,7 +191,7 @@ void ProgramVoicePool::noteOn(
     if (channel < 0 || channel >= static_cast<std::int32_t>(midiChannelCount) ||
         velocity <= 0.0F)
         return;
-    const auto keygroup = std::find_if(program_.keygroups.begin(), program_.keygroups.end(),
+    const auto keygroup = std::find_if(keygroups_.begin(), keygroups_.end(),
                                        [&](const PreparedKeygroup& candidate) {
                                            const auto keygroupChannel =
                                                (basicMidiChannel_ - 1 +
@@ -190,7 +201,7 @@ void ProgramVoicePool::noteOn(
                                                   pitch <= candidate.highKey &&
                                                   (midiOmni_ || channel == keygroupChannel);
                                        });
-    if (keygroup == program_.keygroups.end())
+    if (keygroup == keygroups_.end())
         return;
     const auto midiVelocity = static_cast<std::uint8_t>(
         std::clamp(static_cast<int>(std::lround(velocity * 127.0F)), 1, 127));
@@ -199,16 +210,16 @@ void ProgramVoicePool::noteOn(
                                           : keygroup->softSampleIndex;
     const auto tuning = useLoudLayer ? keygroup->loudTuningSixteenths
                                      : keygroup->softTuningSixteenths;
-    if (!sampleIndex || *sampleIndex >= program_.samples.size())
+    if (!sampleIndex || *sampleIndex >= samples_->size())
         return;
-    const auto& sample = program_.samples[*sampleIndex];
+    const auto& sample = (*samples_)[*sampleIndex];
     if (sample.samples12.empty() || sample.sampleRate == 0 ||
         sample.playbackEnd <= sample.playbackStart)
         return;
 
     const PendingNote note {
         channel, pitch, noteId, static_cast<float>(midiVelocity) / 127.0F,
-        *sampleIndex, static_cast<std::size_t>(keygroup - program_.keygroups.begin()),
+        *sampleIndex, static_cast<std::size_t>(keygroup - keygroups_.begin()),
         tuning, useLoudLayer};
     if (keygroup->output.kind() == formats::P9OutputKind::mono &&
         keygroup->output.raw < retiringVoices_.size()) {
@@ -337,7 +348,7 @@ float ProgramVoicePool::advanceEnvelope(EnvelopeState& envelope) const noexcept 
 }
 
 float ProgramVoicePool::nextSample(Voice& voice) noexcept {
-    const auto& sample = program_.samples[voice.sampleIndex];
+    const auto& sample = (*samples_)[voice.sampleIndex];
     const double start = static_cast<double>(sample.playbackStart);
     const double end = static_cast<double>(sample.playbackEnd);
     const double high = end - 1.0;
@@ -390,7 +401,7 @@ float ProgramVoicePool::nextSample(Voice& voice) noexcept {
                       pitchBendRatios_[static_cast<std::size_t>(voice.midiChannel)] *
                       static_cast<double>(voice.playbackDirection);
     float value = ((first + (second - first) * fraction) / 2048.0F) * voice.gain;
-    const auto& keygroup = program_.keygroups[voice.keygroupIndex];
+    const auto& keygroup = keygroups_[voice.keygroupIndex];
     const float ampEnvelope = advanceEnvelope(voice.amplitude);
     const float filterEnvelope = advanceEnvelope(voice.filter);
     if (voice.amplitude.stage == EnvelopeState::Stage::done) {

@@ -193,8 +193,12 @@ bool Controller::setAvailablePrograms(std::vector<content::LoadedProgram> progra
     sourcePath_ = std::move(sourcePath);
     selectedProgram_ = 0;
     restoredFromHostState_ = false;
-    if (sendProjectState(projectStateForSelection(0), selectionStatus(0)))
+    if (sendProjectState(projectStateForSelection(0), selectionStatus(0))) {
+        liveEditProgramFilename_.clear();
+        liveEditBaselineP9_.clear();
+        liveEditRevision_ = 0;
         return true;
+    }
     programs_ = std::move(previousPrograms);
     sourceName_ = std::move(previousSourceName);
     sourcePath_ = std::move(previousSourcePath);
@@ -222,8 +226,12 @@ bool Controller::reloadAvailablePrograms(std::vector<content::LoadedProgram> pro
     restoredFromHostState_ = false;
     if (sendProjectState(projectStateForSelection(newSelection),
                          "Reloaded " + sourceName_ + " — " +
-                             programDisplayName(newSelection)))
+                             programDisplayName(newSelection))) {
+        liveEditProgramFilename_.clear();
+        liveEditBaselineP9_.clear();
+        liveEditRevision_ = 0;
         return true;
+    }
     programs_ = std::move(previousPrograms);
     selectedProgram_ = previousSelection;
     restoredFromHostState_ = previousRestoredState;
@@ -237,6 +245,67 @@ bool Controller::selectProgram(std::size_t index) {
         return false;
     selectedProgram_ = index;
     return true;
+}
+
+bool Controller::currentProgramForEditing(
+    std::string& fileName,
+    std::vector<std::byte>& p9Data,
+    std::vector<std::byte>& baselineP9Data) const {
+    if (selectedProgram_ >= programs_.size())
+        return false;
+    fileName = programs_[selectedProgram_].fileName;
+    p9Data = programs_[selectedProgram_].state.p9;
+    baselineP9Data = liveEditBaselineP9_.empty()
+        ? p9Data : liveEditBaselineP9_;
+    return !fileName.empty() && !p9Data.empty() && !baselineP9Data.empty();
+}
+
+void Controller::beginLiveEditSession(std::string identifier) {
+    const auto selectedFilename = selectedProgram_ < programs_.size()
+        ? programs_[selectedProgram_].fileName : std::string {};
+    const bool isSameSession = identifier == liveEditSessionIdentifier_
+        && selectedFilename == liveEditProgramFilename_
+        && !liveEditBaselineP9_.empty();
+    liveEditSessionIdentifier_ = std::move(identifier);
+    liveEditProgramFilename_ = selectedFilename;
+    if (!isSameSession) {
+        liveEditRevision_ = 0;
+        liveEditBaselineP9_ = selectedProgram_ < programs_.size()
+            ? programs_[selectedProgram_].state.p9 : std::vector<std::byte> {};
+    }
+}
+
+bool Controller::applyEditorProgram(std::vector<std::byte> p9Data,
+                                    std::uint64_t revision) {
+    const auto target = std::find_if(
+        programs_.begin(), programs_.end(), [&](const content::LoadedProgram& program) {
+            return program.fileName == liveEditProgramFilename_;
+        });
+    if (target == programs_.end() || revision <= liveEditRevision_)
+        return false;
+    try {
+        const auto parsed = formats::parseP9(p9Data);
+        const auto targetIndex = static_cast<std::size_t>(
+            std::distance(programs_.begin(), target));
+        auto& selected = *target;
+        auto previousData = std::move(selected.state.p9);
+        auto previousName = selected.nativeName;
+        selected.state.p9 = std::move(p9Data);
+        if (!parsed.name.empty())
+            selected.nativeName = parsed.name;
+        if (!sendProgramUpdate(
+                selected.state.p9,
+                "Auditioned EDIT950 revision " + std::to_string(revision))) {
+            selected.state.p9 = std::move(previousData);
+            selected.nativeName = std::move(previousName);
+            return false;
+        }
+        selectedProgram_ = targetIndex;
+        liveEditRevision_ = revision;
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 state::ProjectState Controller::projectStateForSelection(std::size_t index) {
@@ -309,6 +378,29 @@ bool Controller::sendProjectState(const state::ProjectState& projectState,
     } catch (...) {
         return false;
     }
+}
+
+bool Controller::sendProgramUpdate(
+    const std::vector<std::byte>& p9Data,
+    std::string statusText) {
+    if (p9Data.empty() ||
+        p9Data.size() > std::numeric_limits<Steinberg::uint32>::max())
+        return false;
+    auto message = Steinberg::owned(allocateMessage());
+    if (!message)
+        return false;
+    message->setMessageID(updateProgramMessage);
+    if (!message->getAttributes() ||
+        message->getAttributes()->setBinary(
+            programDataAttribute,
+            p9Data.data(),
+            static_cast<Steinberg::uint32>(p9Data.size())) != Steinberg::kResultOk)
+        return false;
+    if (sendMessage(message) != Steinberg::kResultOk)
+        return false;
+    statusText_ = std::move(statusText);
+    (void)setDirty(true);
+    return true;
 }
 
 } // namespace e45recordings::play950
