@@ -97,7 +97,8 @@ Changing the program keeps you on the same disk and loads the samples linked to
 that P9.
 
 Use **Recent Images** to return to a disk you used earlier. Use **Reload Source**
-after editing the IMG in EDIT950.
+when the complete IMG changed outside the current live-edit transaction or when
+you need to recover from a stale or disconnected session.
 
 ## Get MIDI responding the way you expect
 
@@ -155,8 +156,18 @@ FIND950 can also send a chosen P9 directly to an open PLAY950 editor.
 
 ### Edit This IMG
 
-Click **Edit This IMG** to open the loaded disk in EDIT950. Make the change
-there, return to the DAW, then click **Reload Source**.
+Click **Edit This IMG** to open the selected program from the loaded disk in
+EDIT950. Unsaved keygroup transactions are auditioned immediately in this exact
+PLAY950 instance, without writing the IMG or repeatedly rebuilding its linked
+sample data. EDIT950 shows whether each revision is syncing, auditioned or
+disconnected. Save in EDIT950 only when you want to commit the program to disk.
+
+**Reload Source** remains available for changes made in a separate EDIT950
+session or by another tool, added/deleted/renamed P9 or S9 content, changed
+sample data and manual recovery. In 0.13.5, use it after closing a session that
+saved its P9 before opening that program for editing again. Automatic rebase
+after a verified Save is tracked in
+[issue #5](https://github.com/richiewarburton/PLAY950/issues/5).
 
 PLAY950 never writes to the disk itself. That keeps file editing out of the
 real-time instrument.

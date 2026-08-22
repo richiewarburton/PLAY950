@@ -1,11 +1,11 @@
-# PLAY950 0.13.4 installation
+# PLAY950 0.13.5 installation
 
 PLAY950 requires macOS 14 or later and a VST3 host such as Ableton Live 12.
 
 1. Quit Ableton Live.
 2. Copy `PLAY950.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
 3. Reopen Live and rescan VST3 plug-ins if PLAY950 does not appear immediately.
-4. Add PLAY950 to a MIDI track and confirm its editor displays version 0.13.4.
+4. Add PLAY950 to a MIDI track and confirm its editor displays version 0.13.5.
 
 PLAY950 accepts MIDI events and exposes eleven mono audio outputs. It has no
 audio input bus and no sampling or live-monitoring functionality.

@@ -22,6 +22,15 @@
 #include <string>
 #include <vector>
 
+static NSString* const PLAY950EditTransactionNotification =
+    @"com.e45recordings.PLAY950.EditTransaction";
+static NSString* const PLAY950EditAcknowledgementNotification =
+    @"com.e45recordings.PLAY950.EditAcknowledgement";
+static NSString* const PLAY950EditSessionStateNotification =
+    @"com.e45recordings.PLAY950.EditSessionState";
+static NSString* const PLAY950EditSessionQueryNotification =
+    @"com.e45recordings.PLAY950.EditSessionQuery";
+
 @interface PLAY950Button : NSButton
 @property(nonatomic, strong) NSColor* play950FillColor;
 @property(nonatomic, strong) NSColor* play950StrokeColor;
@@ -538,6 +547,18 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
                name:@"com.e45recordings.PLAY950.LoadContent"
              object:nil
  suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
+    [[NSDistributedNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(receiveEditorTransaction:)
+               name:PLAY950EditTransactionNotification
+             object:nil
+ suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
+    [[NSDistributedNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(receiveEditorSessionQuery:)
+               name:PLAY950EditSessionQueryNotification
+             object:nil
+ suspensionBehavior:NSNotificationSuspensionBehaviorDeliverImmediately];
 
     NSInteger storedAppearanceMode = [[NSUserDefaults standardUserDefaults]
         integerForKey:play950AppearancePreferenceKey];
@@ -767,6 +788,7 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
             @"%@ Source path unavailable; open the IMG once and resave the Set.",
             _status.stringValue];
     }
+    [self postEditorSessionState:@"connected"];
     [self checkForUpdates];
     return self;
 }
@@ -992,8 +1014,83 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
 }
 
 - (void)dealloc {
+    [self postEditorSessionState:@"disconnected"];
     [[NSDistributedNotificationCenter defaultCenter] removeObserver:self];
     _controller->release();
+}
+
+- (NSString*)editorSessionIdentifier {
+    if (!_controller->hasActiveLiveEditSession())
+        return nil;
+    const auto& identifier = _controller->liveEditSessionIdentifier();
+    return identifier.empty() ? nil
+        : [NSString stringWithUTF8String:identifier.c_str()];
+}
+
+- (void)postEditorSessionState:(NSString*)state {
+    NSString* identifier = [self editorSessionIdentifier];
+    if (identifier.length == 0)
+        return;
+    [[NSDistributedNotificationCenter defaultCenter]
+        postNotificationName:PLAY950EditSessionStateNotification
+                      object:identifier
+                    userInfo:@{
+                        @"protocolVersion": @1,
+                        @"state": state,
+                        @"revision": @(_controller->liveEditRevision())
+                    }
+          deliverImmediately:YES];
+}
+
+- (void)receiveEditorSessionQuery:(NSNotification*)notification {
+    NSString* identifier = [self editorSessionIdentifier];
+    if (identifier.length > 0 && [notification.object isEqual:identifier])
+        [self postEditorSessionState:@"connected"];
+}
+
+- (void)receiveEditorTransaction:(NSNotification*)notification {
+    NSString* identifier = [self editorSessionIdentifier];
+    if (identifier.length == 0 || ![notification.object isEqual:identifier])
+        return;
+    NSDictionary* fields = notification.userInfo;
+    NSNumber* protocolVersion = fields[@"protocolVersion"];
+    NSNumber* revisionNumber = fields[@"revision"];
+    NSString* encoded = fields[@"programBase64"];
+    NSString* errorMessage = nil;
+    std::uint64_t revision = revisionNumber.unsignedLongLongValue;
+    if (![protocolVersion isKindOfClass:NSNumber.class] || protocolVersion.integerValue != 1 ||
+        ![revisionNumber isKindOfClass:NSNumber.class] ||
+        ![encoded isKindOfClass:NSString.class]) {
+        errorMessage = @"EDIT950 sent an invalid live-edit transaction.";
+    } else if (revision <= _controller->liveEditRevision()) {
+        // Distributed notifications can be delivered more than once. An
+        // already-applied revision is an idempotent success.
+    } else {
+        NSData* data = [[NSData alloc] initWithBase64EncodedString:encoded options:0];
+        if (!data || data.length == 0) {
+            errorMessage = @"EDIT950 sent invalid P9 data.";
+        } else {
+            std::vector<std::byte> p9(data.length);
+            std::memcpy(p9.data(), data.bytes, data.length);
+            if (!_controller->applyEditorProgram(std::move(p9), revision))
+                errorMessage = @"PLAY950 could not audition this edit.";
+        }
+    }
+    NSMutableDictionary* acknowledgement = [@{
+        @"protocolVersion": @1,
+        @"revision": @(revision)
+    } mutableCopy];
+    if (errorMessage)
+        acknowledgement[@"error"] = errorMessage;
+    [[NSDistributedNotificationCenter defaultCenter]
+        postNotificationName:PLAY950EditAcknowledgementNotification
+                      object:identifier
+                    userInfo:acknowledgement
+          deliverImmediately:YES];
+    _status.stringValue = errorMessage ?: [NSString stringWithUTF8String:
+        _controller->statusText().c_str()];
+    if (!errorMessage)
+        [self reloadProgramMenu];
 }
 
 - (void)receiveLibraryLoad:(NSNotification*)notification {
@@ -1054,16 +1151,69 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
         _status.stringValue = @"EDIT950 is not installed.";
         return;
     }
-    NSURL* imageURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]];
+    std::string programFilename;
+    std::vector<std::byte> programData;
+    std::vector<std::byte> baselineProgramData;
+    std::string sessionIdentifier = _controller->liveEditSessionIdentifier();
+    if (sessionIdentifier.empty())
+        sessionIdentifier = NSUUID.UUID.UUIDString.UTF8String;
+    _controller->beginLiveEditSession(sessionIdentifier);
+    if (!_controller->currentProgramForEditing(
+            programFilename, programData, baselineProgramData)) {
+        _status.stringValue = @"No selected P9 program is available to edit.";
+        return;
+    }
+
+    NSString* support = NSSearchPathForDirectoriesInDomains(
+        NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+    NSURL* directory = [NSURL fileURLWithPath:
+        [support stringByAppendingPathComponent:@"950TOOLS/EditSessions"]
+        isDirectory:YES];
+    NSError* requestError = nil;
+    if (![[NSFileManager defaultManager] createDirectoryAtURL:directory
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:&requestError]) {
+        _status.stringValue = [NSString stringWithFormat:
+            @"Could not prepare the EDIT950 session: %@", requestError.localizedDescription];
+        return;
+    }
+    NSData* p9 = [NSData dataWithBytes:programData.data() length:programData.size()];
+    NSData* baselineP9 = [NSData dataWithBytes:baselineProgramData.data()
+                                      length:baselineProgramData.size()];
+    NSDictionary* request = @{
+        @"protocolVersion": @1,
+        @"instanceID": [NSString stringWithUTF8String:sessionIdentifier.c_str()],
+        @"imagePath": [NSString stringWithUTF8String:path.c_str()],
+        @"programFilename": [NSString stringWithUTF8String:programFilename.c_str()],
+        @"programData": [p9 base64EncodedStringWithOptions:0],
+        @"baselineProgramData": [baselineP9 base64EncodedStringWithOptions:0],
+        @"revision": @(_controller->liveEditRevision()),
+        @"createdAt": @(NSDate.date.timeIntervalSince1970 * 1000.0)
+    };
+    NSData* requestData = [NSJSONSerialization dataWithJSONObject:request
+                                                          options:0
+                                                            error:&requestError];
+    NSURL* requestURL = [directory URLByAppendingPathComponent:
+        [NSString stringWithFormat:@"%@.edit950session", NSUUID.UUID.UUIDString]];
+    if (!requestData || ![requestData writeToURL:requestURL
+                                         options:NSDataWritingAtomic
+                                           error:&requestError]) {
+        _status.stringValue = [NSString stringWithFormat:
+            @"Could not create the EDIT950 session: %@", requestError.localizedDescription];
+        return;
+    }
+    [self postEditorSessionState:@"connected"];
     NSWorkspaceOpenConfiguration* configuration =
         [NSWorkspaceOpenConfiguration configuration];
     [[NSWorkspace sharedWorkspace]
-        openURLs:@[imageURL]
+        openURLs:@[requestURL]
         withApplicationAtURL:application
         configuration:configuration
         completionHandler:^(NSRunningApplication* applicationResult, NSError* error) {
             (void)applicationResult;
             if (error) {
+                [[NSFileManager defaultManager] removeItemAtURL:requestURL error:nil];
                 dispatch_async(dispatch_get_main_queue(), ^{
                     self->_status.stringValue = [NSString stringWithFormat:
                         @"Could not open EDIT950: %@", error.localizedDescription];
@@ -1141,10 +1291,15 @@ void addPlay950AccentBar(NSView* parent, NSRect frame, NSColor* accent) {
                     std::move(programs));
             const std::string sourceName = path.filename().string();
             dispatch_async(dispatch_get_main_queue(), ^{
+                const bool hadLiveSession = self->_controller->hasActiveLiveEditSession();
+                if (hadLiveSession)
+                    [self postEditorSessionState:@"disconnected"];
                 const bool sent = isReload
                     ? self->_controller->reloadAvailablePrograms(std::move(*sharedPrograms))
                     : self->_controller->setAvailablePrograms(
                           std::move(*sharedPrograms), sourceName, selectedPath);
+                if (hadLiveSession && !sent)
+                    [self postEditorSessionState:@"connected"];
                 self->_status.stringValue = sent
                     ? [NSString stringWithUTF8String:self->_controller->statusText().c_str()]
                     : @"The processor could not prepare this program; previous content retained.";

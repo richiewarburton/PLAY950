@@ -1,18 +1,21 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(PLAY950 VERSION 0.13.4 LANGUAGES C CXX OBJC OBJCXX)
+project(PLAY950 VERSION 0.13.5 LANGUAGES C CXX OBJC OBJCXX)
 
 include(CTest)
+option(PLAY950_BUILD_PLUGIN "Build the PLAY950 VST3 plug-in" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 
-set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES ON CACHE BOOL "" FORCE)
-set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
-set(SMTG_RUN_VST_VALIDATOR OFF CACHE BOOL "" FORCE)
-add_subdirectory(external/vst3sdk)
+if(PLAY950_BUILD_PLUGIN)
+    set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES ON CACHE BOOL "" FORCE)
+    set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(SMTG_RUN_VST_VALIDATOR OFF CACHE BOOL "" FORCE)
+    add_subdirectory(external/vst3sdk)
+endif()
 
 add_library(play950_formats STATIC
     source/formats/P9.cpp
@@ -111,6 +114,7 @@ if(BUILD_TESTING)
     add_test(NAME play950.workflow.images COMMAND play950_image_workflow_tests)
 endif()
 
+if(PLAY950_BUILD_PLUGIN)
 set(PLAY950_UI_RESOURCES
     Resources/PLAY950Logo.png
     Resources/FIND950Logo.png
@@ -216,4 +220,5 @@ if(SMTG_MAC)
         COMMENT "Ad-hoc signing completed PLAY950 bundle"
         VERBATIM
     )
+endif()
 endif()

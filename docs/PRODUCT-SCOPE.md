@@ -31,15 +31,18 @@ The two applications divide responsibility as follows:
 
 ### EDIT950 workflow bridge
 
-- **Reload IMG** reloads the current source on a background queue after edits in
-  EDIT950. It preserves the selected program by P9 filename where
-  possible and changes nothing if reload fails.
+- **Reload Source** deliberately re-reads the complete source on a background
+  queue after changes made by another session or tool, content additions,
+  deletions or renames, or a stale/disconnected session. It preserves the
+  selected program by P9 filename where possible and changes nothing if reload
+  fails.
 - **Recent IMGs** provides quick access to a small per-user list of successfully
   loaded images. Missing entries are clearly identified and removable.
-- **Open in EDIT950** asks macOS to open the current IMG with bundle
-  identifier `com.e45recordings.EDIT950`, with compatibility for the legacy
-  `com.local.AKAIImageManager` identifier. The installed application already
-  registers IMG documents and accepts file-open events.
+- **Open in EDIT950** writes a short-lived, versioned session request containing
+  the exact selected P9, source IMG path and a stable random identifier for this
+  plug-in instance. EDIT950 returns validated P9-only revisions through the
+  local live-audition channel; prepared S9 samples are shared rather than copied
+  or parsed again. The IMG is never changed by PLAY950.
 - Source paths are workflow conveniences, not playback dependencies. Embedded
   state remains authoritative when an Ableton Set is reopened without its IMG.
 
@@ -59,7 +62,7 @@ PLAY950 will not duplicate:
 
 1. **Stage 12 — filter/envelope approximation:** fit the supplied S950 capture
    and implement base filter, modulation and amplitude/VCF envelopes.
-2. **Workflow bridge:** current-source tracking, Reload IMG, Recent IMGs and Open
+2. **Workflow bridge:** current-source tracking, Reload Source, Recent IMGs and Open
    in EDIT950.
 3. **Hardening and release:** compatibility testing, documentation, packaging,
    signing and notarization.

@@ -46,7 +46,7 @@ content with the DAW project.*
 
 ## Current availability
 
-PLAY950 **0.13.4** is the current
+PLAY950 **0.13.5** is the current
 [public Universal macOS VST3 community build](https://github.com/richiewarburton/PLAY950/releases/latest)
 for macOS 14 or later. Acceptance uses Ableton Live 12 and Steinberg's VST3
 editor host and validator, although PLAY950 is designed around standard VST3
@@ -74,8 +74,12 @@ and troubleshooting, see the [PLAY950 musician's guide](docs/USER_GUIDE.md).
    `Left(09)` and `Right(10)` in the host for the original output assignments.
 6. Save the DAW project. PLAY950 embeds the current native program and samples
    so reopening does not depend on the source IMG path.
-7. Use **Open in EDIT950** when you want to alter the image or program; PLAY950
-   itself remains a read-only player.
+7. Use **Open in EDIT950** to edit the selected P9. EDIT950 receives the exact
+   program and a private instance identifier, then streams validated in-memory
+   P9 transactions back for audition in this PLAY950 instance. The IMG remains
+   unchanged until you explicitly save it in EDIT950; PLAY950 itself remains a
+   read-only player. After closing EDIT950, use **Reload Source** before starting
+   another editing session so PLAY950 rebases to the saved IMG.
 
 The 0.13.3-and-later editor uses larger type throughout. Its **Theme** menu defaults to
 the macOS System appearance, with explicit Light and Dark choices when a fixed
