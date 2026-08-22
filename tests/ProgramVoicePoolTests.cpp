@@ -270,6 +270,10 @@ int main() {
         require(std::abs(storage[0][1] - 0.125F) < 0.0001F,
                 "Soft layer selection or velocity-independent gain failed");
         layerPool.noteOff(66, 107);
+        for (int block = 0; block < 240; ++block) {
+            storage = {};
+            layerPool.renderAdd(outputs, 2);
+        }
         layerPool.noteOn(66, 108, 1.0F);
         storage = {};
         layerPool.renderAdd(outputs, 2);
@@ -471,6 +475,36 @@ int main() {
         envelopePool.renderAdd(envelopeOutputs, 1000);
         require(envelopePool.activeVoiceCount() == 0,
                 "amplitude release did not finish and retire its voice");
+
+        audio::PreparedProgram zeroReleaseProgram;
+        auto zeroReleaseSignal = loopingRamp();
+        zeroReleaseSignal.samples12.assign(32, 1024);
+        zeroReleaseSignal.playbackEnd = zeroReleaseSignal.samples12.size();
+        zeroReleaseProgram.samples.push_back(std::move(zeroReleaseSignal));
+        auto zeroReleaseKeygroup = keygroup(61, 0);
+        zeroReleaseKeygroup.softFilter = 99;
+        zeroReleaseKeygroup.amplitudeEnvelope = {0, 0, 99, 0};
+        zeroReleaseProgram.keygroups.push_back(zeroReleaseKeygroup);
+        audio::ProgramVoicePool zeroReleasePool;
+        zeroReleasePool.setProgram(std::move(zeroReleaseProgram));
+        zeroReleasePool.setHostSampleRate(1'000.0);
+        zeroReleasePool.noteOn(61, 202, 1.0F);
+        std::array<std::array<float, 12>, audio::ProgramVoicePool::outputCount>
+            zeroReleaseStorage {};
+        audio::ProgramVoicePool::OutputBuffers zeroReleaseOutputs {};
+        for (std::size_t bus = 0; bus < zeroReleaseOutputs.size(); ++bus)
+            zeroReleaseOutputs[bus] = zeroReleaseStorage[bus].data();
+        zeroReleasePool.renderAdd(zeroReleaseOutputs, 1);
+        zeroReleaseStorage = {};
+        zeroReleasePool.noteOff(61, 202);
+        require(zeroReleasePool.activeVoiceCount() == 0,
+                "zero-release note remained logically active");
+        zeroReleasePool.renderAdd(zeroReleaseOutputs, 11);
+        require(std::abs(zeroReleaseStorage[0][0] - 0.5F) < 0.0001F &&
+                    std::abs(zeroReleaseStorage[0][5] - 0.25F) < 0.0001F &&
+                    std::abs(zeroReleaseStorage[0][9]) < 0.02F &&
+                    std::abs(zeroReleaseStorage[0][10]) < 0.0001F,
+                "zero release did not use a 10 ms smooth post-filter retirement");
 
         std::cout << "PLAY950 program voice-pool tests passed\n";
         return 0;

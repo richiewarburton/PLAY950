@@ -77,7 +77,7 @@ void ProgramVoicePool::setProgram(PreparedProgram program) {
     program_ = std::move(program);
     for (auto& voice : voices_)
         voice = {};
-    retiringMonophonicVoices_ = {};
+    retiringVoices_ = {};
     nextAge_ = 1;
 }
 
@@ -154,17 +154,15 @@ void ProgramVoicePool::initializeVoice(Voice& voice, const PendingNote& note) no
                       std::pow(2.0, semitones);
 }
 
-void ProgramVoicePool::retireMonophonicVoice(const Voice& voice) noexcept {
-    auto slot = std::find_if(retiringMonophonicVoices_.begin(),
-                             retiringMonophonicVoices_.end(),
+void ProgramVoicePool::retireVoice(const Voice& voice, double seconds) noexcept {
+    auto slot = std::find_if(retiringVoices_.begin(), retiringVoices_.end(),
                              [](const RetiringVoice& retiring) {
                                  return retiring.samplesRemaining == 0;
                              });
-    if (slot == retiringMonophonicVoices_.end()) {
+    if (slot == retiringVoices_.end()) {
         // Eight retriggers inside 2.5 ms already exceed the audible use case;
         // if that happens, replace the tail nearest silence.
-        slot = std::min_element(retiringMonophonicVoices_.begin(),
-                                retiringMonophonicVoices_.end(),
+        slot = std::min_element(retiringVoices_.begin(), retiringVoices_.end(),
                                 [](const RetiringVoice& a, const RetiringVoice& b) {
                                     return a.samplesRemaining < b.samplesRemaining;
                                 });
@@ -173,7 +171,7 @@ void ProgramVoicePool::retireMonophonicVoice(const Voice& voice) noexcept {
     retiring.voice = voice;
     retiring.totalSamples = std::max<std::uint64_t>(
         1, static_cast<std::uint64_t>(
-               std::llround(hostSampleRate_ * monophonicRetirementSeconds)));
+               std::llround(hostSampleRate_ * seconds)));
     retiring.samplesRemaining = retiring.totalSamples;
 }
 
@@ -213,7 +211,7 @@ void ProgramVoicePool::noteOn(
         *sampleIndex, static_cast<std::size_t>(keygroup - program_.keygroups.begin()),
         tuning, useLoudLayer};
     if (keygroup->output.kind() == formats::P9OutputKind::mono &&
-        keygroup->output.raw < retiringMonophonicVoices_.size()) {
+        keygroup->output.raw < retiringVoices_.size()) {
         auto occupied = std::find_if(voices_.begin(), voices_.end(),
                                      [&](const Voice& voice) {
             return voice.active && voice.output.kind() == formats::P9OutputKind::mono &&
@@ -223,7 +221,7 @@ void ProgramVoicePool::noteOn(
             // Start the replacement exactly on the note event.  The displaced
             // post-filter voice is kept in fixed storage and ramps to silence,
             // avoiding both a hard waveform discontinuity and audio-thread allocation.
-            retireMonophonicVoice(*occupied);
+            retireVoice(*occupied, monophonicRetirementSeconds);
             initializeVoice(*occupied, note);
             return;
         }
@@ -247,6 +245,7 @@ void ProgramVoicePool::noteOff(
         const bool idMatches = noteId >= 0 ? voice.noteId == noteId : voice.pitch == pitch;
         if (voice.active && voice.midiChannel == channel && idMatches && !voice.oneShot) {
             if (voice.amplitude.parameters.release == 0) {
+                retireVoice(voice, zeroReleaseRetirementSeconds);
                 voice.active = false;
                 if (noteId >= 0)
                     return;
@@ -425,12 +424,14 @@ void ProgramVoicePool::renderAdd(
     if (frameCount <= 0)
         return;
     for (std::int32_t frame = 0; frame < frameCount; ++frame) {
-        for (auto& retiring : retiringMonophonicVoices_) {
+        for (auto& retiring : retiringVoices_) {
             if (retiring.samplesRemaining == 0 || !retiring.voice.active)
                 continue;
             const float value = nextSample(retiring.voice);
-            const float gain = static_cast<float>(retiring.samplesRemaining) /
-                               static_cast<float>(retiring.totalSamples);
+            const float position = static_cast<float>(retiring.samplesRemaining) /
+                                   static_cast<float>(retiring.totalSamples);
+            const float gain = 0.5F - 0.5F *
+                std::cos(static_cast<float>(std::numbers::pi) * position);
             addToOutput(outputs, frame, retiring.voice, value * gain);
             if (--retiring.samplesRemaining == 0)
                 retiring.voice.active = false;

@@ -66,6 +66,7 @@ public:
 
 private:
     static constexpr double monophonicRetirementSeconds = 0.0025;
+    static constexpr double zeroReleaseRetirementSeconds = 0.010;
 
     struct EnvelopeState {
         enum class Stage { attack, decay, sustain, release, done };
@@ -118,7 +119,7 @@ private:
     [[nodiscard]] Voice& voiceForNewNote() noexcept;
     void enforceOutputLimits(formats::P9Output output) noexcept;
     void initializeVoice(Voice& voice, const PendingNote& note) noexcept;
-    void retireMonophonicVoice(const Voice& voice) noexcept;
+    void retireVoice(const Voice& voice, double seconds) noexcept;
     void addToOutput(const OutputBuffers& outputs, std::int32_t frame,
                      const Voice& voice, float value) const noexcept;
     float nextSample(Voice& voice) noexcept;
@@ -126,7 +127,7 @@ private:
 
     PreparedProgram program_;
     std::array<Voice, voiceCount> voices_ {};
-    std::array<RetiringVoice, 8> retiringMonophonicVoices_ {};
+    std::array<RetiringVoice, 8> retiringVoices_ {};
     double hostSampleRate_ {44'100.0};
     std::uint64_t nextAge_ {1};
     std::array<double, midiChannelCount> pitchBendRatios_ {
